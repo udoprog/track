@@ -939,17 +939,11 @@ impl MediaList {
                             <Button class={classes!("chip", (!regular).then_some("selected"))} label="Specials" title="From the specials" pressed={Some(!regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Specials))} />
                         </div>
 
-                        <MarkTimeMenu class="primary has-text" icon="forward" title="Mark the next episode of the selected shows watched" prompt="When did you watch them?" on_confirm={link.callback(Msg::BulkMarkNext)}>
-                            <span class="icon forward" aria-hidden="true" />
-                            <span>{"Mark next"}</span>
-                        </MarkTimeMenu>
+                        <MarkTimeMenu variant="primary" icon="forward" label="Mark next" title="Mark the next episode of the selected shows watched" prompt="When did you watch them?" on_confirm={link.callback(Msg::BulkMarkNext)} />
                     }
 
                     if movies > 0 {
-                        <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected movies watched" prompt="When did you watch them?" preset={released} on_confirm={link.callback(Msg::BulkMarkMovies)}>
-                            <span class="icon check" aria-hidden="true" />
-                            <span>{"Mark watched"}</span>
-                        </MarkTimeMenu>
+                        <MarkTimeMenu variant="primary" icon="check" label="Mark watched" title="Mark the selected movies watched" prompt="When did you watch them?" preset={released} on_confirm={link.callback(Msg::BulkMarkMovies)} />
                     }
 
                     if untracked {
@@ -1059,7 +1053,7 @@ impl MediaList {
                     if is_movie || !m.tracked {
                         <div class="input-group">
                             if is_movie {
-                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
+                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
                             }
 
                             if !m.tracked {

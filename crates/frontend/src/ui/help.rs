@@ -1,7 +1,6 @@
 use yew::prelude::*;
 
 use crate::help;
-use crate::ui::Button;
 
 /// Opens the help modal, provided by the app through context.
 #[derive(Clone, PartialEq)]
@@ -46,6 +45,8 @@ pub(crate) fn Help(props: &Props) -> Html {
     });
 
     html! {
-        <Button class="help-mark" icon="question-mark-circle" {title} haspopup="dialog" {onclick} />
+        <plinth::IconButton class="help-mark" {title} haspopup=true {onclick}>
+            <span class="icon question-mark-circle" aria-hidden="true" />
+        </plinth::IconButton>
     }
 }

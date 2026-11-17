@@ -24,6 +24,18 @@ pub(crate) struct Props {
     pub(crate) children: Children,
 }
 
+/// Navigates in place on a plain click; modified and middle clicks are the
+/// browser's (new tab, window).
+pub(crate) fn follow(router: &Router, to: &Route, e: &MouseEvent) -> bool {
+    if e.button() != 0 || e.ctrl_key() || e.meta_key() || e.shift_key() || e.alt_key() {
+        return false;
+    }
+
+    e.prevent_default();
+    router.push(to.clone());
+    true
+}
+
 /// A link to a page of the app: a real `href`, so it can be opened in a new
 /// tab and is announced as a link, while a plain click navigates in place.
 #[function_component]
@@ -35,14 +47,9 @@ pub(crate) fn Link(props: &Props) -> Html {
         let then = props.onclick.clone();
 
         Callback::from(move |e: MouseEvent| {
-            // Modified and middle clicks are the browser's (new tab, window).
-            if e.button() != 0 || e.ctrl_key() || e.meta_key() || e.shift_key() || e.alt_key() {
-                return;
+            if follow(&router, &to, &e) {
+                then.emit(());
             }
-
-            e.prevent_default();
-            then.emit(());
-            router.push(to.clone());
         })
     };
 

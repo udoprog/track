@@ -1,10 +1,13 @@
+use plinth::{ButtonSize, ButtonVariant};
 use web_sys::MouseEvent;
 use yew::html::IntoPropValue;
 use yew::prelude::*;
 
-/// The colour variant of a [`Button`]. [`Variant::Secondary`] is the default
-/// (plain) button; the others map to the `primary`/`success`/`danger` element
-/// modifiers.
+use crate::router::{Route, Router};
+use crate::ui::link;
+
+/// The colour variant of a [`Button`]; [`Variant::Secondary`] is the plain
+/// button.
 #[derive(Clone, Copy, PartialEq, Default)]
 pub(crate) enum Variant {
     #[default]
@@ -14,33 +17,24 @@ pub(crate) enum Variant {
     Danger,
 }
 
-impl Variant {
-    fn class(self) -> Option<&'static str> {
-        match self {
-            Variant::Secondary => None,
-            Variant::Primary => Some("primary"),
-            Variant::Success => Some("success"),
-            Variant::Danger => Some("danger"),
+impl From<Variant> for ButtonVariant {
+    fn from(variant: Variant) -> Self {
+        match variant {
+            Variant::Secondary => ButtonVariant::Secondary,
+            Variant::Primary => ButtonVariant::Primary,
+            Variant::Success => ButtonVariant::Success,
+            Variant::Danger => ButtonVariant::Danger,
         }
     }
 }
 
-/// The size of a [`Button`]: [`Size::Small`] adds the `small` modifier, for
-/// actions in a dense head or list row.
+/// The size of a [`Button`]: [`Size::Small`] for actions in a dense head or
+/// list row; phones keep the touch height.
 #[derive(Clone, Copy, PartialEq, Default)]
 pub(crate) enum Size {
     #[default]
     Normal,
     Small,
-}
-
-impl Size {
-    fn class(self) -> Option<&'static str> {
-        match self {
-            Size::Normal => None,
-            Size::Small => Some("small"),
-        }
-    }
 }
 
 impl IntoPropValue<Variant> for &str {
@@ -62,15 +56,13 @@ pub(crate) struct Props {
     pub(crate) icon: AttrValue,
     /// The tooltip / accessible label. Always present.
     pub(crate) title: AttrValue,
-    /// Optional label shown inside the button on mobile and hidden on desktop.
+    /// Optional label shown inside the button on mobile; on desktop the
+    /// button is its icon alone.
     #[prop_or_default]
     pub(crate) text: Option<AttrValue>,
     /// Optional label shown inside the button at every width.
     #[prop_or_default]
     pub(crate) label: Option<AttrValue>,
-    /// Optional label shown inside the button on desktop and hidden on mobile.
-    #[prop_or_default]
-    pub(crate) desktop_text: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) variant: Variant,
     #[prop_or_default]
@@ -105,58 +97,89 @@ pub(crate) struct Props {
     /// Whether a `switch` is on (`aria-checked`).
     #[prop_or_default]
     pub(crate) checked: Option<bool>,
+    /// A link styled as a button, to another document or a fragment.
+    #[prop_or_default]
+    pub(crate) href: Option<AttrValue>,
+    /// A link styled as a button, to a page of the app.
+    #[prop_or_default]
+    pub(crate) to: Option<Route>,
     /// Extra content after the icon and label, e.g. a flag.
     #[prop_or_default]
     pub(crate) children: Children,
 }
 
-/// A standard action button: an icon, a required `title` tooltip, an optional
-/// `text` label that is shown on mobile and hidden on desktop (or
-/// `desktop_text`, the other way around), and an optional `label` shown at
-/// every width.
+/// plinth's button with an app icon by name, a required `title` tooltip, and
+/// a `label` shown at every width or a `text` shown on mobile only.
 #[function_component]
 pub(crate) fn Button(props: &Props) -> Html {
-    let class = classes!(
-        props.variant.class(),
-        props.size.class(),
-        props.text.is_some().then_some("mobile-has-text"),
-        props.label.is_some().then_some("has-text"),
-        props.desktop_text.is_some().then_some("desktop-has-text"),
-        props.class.clone(),
-    );
+    // A switch without an icon shows its on/off mark (`input-checkbox`).
+    let icon = if !props.icon.is_empty() {
+        Some(
+            html! { <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} /> },
+        )
+    } else {
+        props
+            .checked
+            .is_some()
+            .then(|| html! { <span class="mark" /> })
+    };
+    let router = use_context::<Router>();
+    let href = props
+        .to
+        .as_ref()
+        .map(|to| AttrValue::from(to.to_string()))
+        .or_else(|| props.href.clone());
+    let onclick = match (&props.to, router) {
+        (Some(to), Some(router)) => {
+            let to = to.clone();
+            Callback::from(move |e: MouseEvent| {
+                link::follow(&router, &to, &e);
+            })
+        }
+        _ => props.onclick.clone(),
+    };
+    let size = match props.size {
+        Size::Normal => ButtonSize::Regular,
+        Size::Small => ButtonSize::Small,
+    };
+
+    let label = props.label.clone().or_else(|| props.text.clone());
+
+    // A button of the app's own making, its content composed by the caller
+    // (a picture, a logo, a count), keeps the app's `button` look.
+    if props.icon.is_empty() && label.is_none() {
+        let variant = match props.variant {
+            Variant::Secondary => None,
+            Variant::Primary => Some(plinth::class::PRIMARY),
+            Variant::Success => Some(plinth::class::SUCCESS),
+            Variant::Danger => Some(plinth::class::DANGER),
+        };
+        let class = classes!(variant, props.class.clone());
+
+        return html! {
+            <button type="button" ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} aria-pressed={props.pressed.map(bool_attr)} aria-expanded={props.expanded.map(bool_attr)} aria-haspopup={props.haspopup.clone()} role={props.role.clone()} aria-checked={props.checked.map(bool_attr)} {onclick}>
+                { for icon }
+                { for props.children.iter() }
+            </button>
+        };
+    }
 
     html! {
-        <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} aria-pressed={props.pressed.map(bool_attr)} aria-expanded={props.expanded.map(bool_attr)} aria-haspopup={props.haspopup.clone()} role={props.role.clone()} aria-checked={props.checked.map(bool_attr)} onclick={props.onclick.clone()}>
-            if !props.icon.is_empty() {
-                <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} aria-hidden="true" />
+        <plinth::Button variant={ButtonVariant::from(props.variant)} {size} {icon}
+            fold_wide={props.label.is_none() && props.text.is_some()}
+            class={props.class.clone()} title={props.title.clone()} node_ref={props.node_ref.clone()}
+            {href} disabled={props.disabled} {onclick}
+            current={props.current.then_some(AttrValue::Static("page"))}
+            pressed={props.pressed} expanded={props.expanded} haspopup={props.haspopup.clone()}
+            role={props.role.clone()} checked={props.checked}>
+            if let Some(label) = label {
+                {label}
             }
-
-            if let Some(label) = &props.label {
-                <span>{label}</span>
-            } else if let Some(text) = &props.text {
-                <span class="mobile-only">{text}</span>
-            } else if let Some(text) = &props.desktop_text {
-                <span class="desktop-only">{text}</span>
-            }
-
             { for props.children.iter() }
-        </button>
+        </plinth::Button>
     }
 }
 
 fn bool_attr(value: bool) -> AttrValue {
     AttrValue::Static(if value { "true" } else { "false" })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Size, Variant};
-
-    #[test]
-    fn modifier_classes() {
-        assert_eq!(Size::Normal.class(), None);
-        assert_eq!(Size::Small.class(), Some("small"));
-        assert_eq!(Variant::Secondary.class(), None);
-        assert_eq!(Variant::Danger.class(), Some("danger"));
-    }
 }

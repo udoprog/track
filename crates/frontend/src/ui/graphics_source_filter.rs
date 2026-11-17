@@ -28,7 +28,6 @@ pub(crate) fn GraphicsSourceFilter(props: &Props) -> Html {
 
                 html! {
                     <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
-                        <span class="mark" />
                         <span class={classes!("logo", source.as_str())} />
                     </Button>
                 }

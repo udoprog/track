@@ -2203,9 +2203,7 @@ impl ShowDetail {
                         <div class="toolbar-toggle">
                             <div class="input-group">
                                 if let Some((ref label, _)) = pending_episode {
-                                    <a class="button primary" href={format!("#{label}")} title="Jump to pending episode">
-                                        <span class="icon chevron-down" aria-hidden="true" />
-                                    </a>
+                                    <Button icon="chevron-down" variant={Variant::Primary} href={format!("#{label}")} title="Jump to pending episode" />
                                 }
 
                                 <Button icon={if season_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| UiMsg::ToggleSeasonActionsExpanded(season_number))} />
@@ -2220,24 +2218,15 @@ impl ShowDetail {
                             }
 
                             if let Some((label, on_remove_next)) = pending_episode {
-                                <a class="button primary mobile-has-text" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
-                                    <span class="icon chevron-down" aria-hidden="true" />
-                                    <span class="mobile-only">{format!("Jump to next episode {label}")}</span>
-                                </a>
+                                <Button icon="chevron-down" variant={Variant::Primary} href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode" text={format!("Jump to next episode {label}")} />
 
                                 <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu class="mobile-has-text" title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))}>
-                                    <span class="icon bookmark-slash" aria-hidden="true" />
-                                    <span class="mobile-only">{label}</span>
-                                </MarkTimeMenu>
+                                <MarkTimeMenu trigger_icon="bookmark-slash" text={label} title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))} />
                             }
 
                             if watched_count < total {
-                                <MarkTimeMenu class="primary mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
-                                    <span class="icon check" aria-hidden="true" />
-                                    <span class="mobile-only">{"Remaining"}</span>
-                                </MarkTimeMenu>
+                                <MarkTimeMenu variant="primary" trigger_icon="check" text="Remaining" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining} />
                             }
                         </div>
                     </div>
@@ -2295,10 +2284,7 @@ impl ShowDetail {
                 </span>
 
                 <div class="plinth-cluster plinth-tight">
-                    <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)}>
-                        <span class="icon check" aria-hidden="true" />
-                        <span>{"Mark watched"}</span>
-                    </MarkTimeMenu>
+                    <MarkTimeMenu variant="primary" icon="check" label="Mark watched" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)} />
 
                     <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| PickMsg::BulkSync)} />
                     <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| PickMsg::ClearPicked)} />
@@ -2365,16 +2351,14 @@ impl ShowDetail {
 
                         <div class="plinth-push-end plinth-cluster plinth-nowrap plinth-loose">
                             <div class="input-group">
-                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
+                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>
 
                             <div class="input-group">
                                 if episode.pending.is_some() {
                                     <Button icon="bookmark" variant={Variant::Primary} title="Next episode" pressed={Some(true)} onclick={on_remove_next} />
                                 } else {
-                                    <MarkTimeMenu icon="bookmark" title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
-                                        <span class="icon bookmark" aria-hidden="true" />
-                                    </MarkTimeMenu>
+                                    <MarkTimeMenu icon="bookmark" title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode} />
                                 }
 
                                 <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!(menu_open.then_some("selected"))} title="More actions" expanded={Some(menu_open)} haspopup="menu" onclick={on_toggle_menu.clone()} />

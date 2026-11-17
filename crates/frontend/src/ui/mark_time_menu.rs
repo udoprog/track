@@ -75,15 +75,16 @@ impl TimePreset {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    /// Inner content of the trigger button (icons, labels). The component wraps
-    /// it in a `<button>` that opens the popover. Unused when `quick`.
     #[prop_or_default]
-    pub(crate) children: Children,
-    /// Classes for the trigger button (e.g. `"success"`).
-    #[prop_or_default]
-    pub(crate) class: Classes,
+    pub(crate) variant: Variant,
+    /// The popover's icon, and the trigger's unless `trigger_icon` is given.
     #[prop_or_default]
     pub(crate) icon: Option<AttrValue>,
+    #[prop_or_default]
+    pub(crate) trigger_icon: Option<AttrValue>,
+    /// The trigger's label at every width.
+    #[prop_or_default]
+    pub(crate) label: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) title: AttrValue,
     /// Heading shown at the top of the popover.
@@ -95,7 +96,7 @@ pub(crate) struct Props {
     /// opens the popover for choosing another time.
     #[prop_or_default]
     pub(crate) quick: bool,
-    /// With `quick`, the trigger's label on mobile.
+    /// The trigger's label on mobile.
     #[prop_or_default]
     pub(crate) text: Option<AttrValue>,
     pub(crate) on_confirm: Callback<api::MarkTime>,
@@ -270,13 +271,11 @@ impl Component for MarkTimeMenu {
         html! {
             <>
                 if props.quick {
-                    <Button icon={props.icon.clone().unwrap_or(AttrValue::Static("check"))} class={props.class.clone()} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
+                    <Button icon={props.icon.clone().unwrap_or(AttrValue::Static("check"))} variant={props.variant} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
 
-                    <Button node_ref={self.anchor.clone()} icon="chevron-down" class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
+                    <Button node_ref={self.anchor.clone()} icon="chevron-down" variant={props.variant} class={classes!("mark-time-more", self.context_open.then_some("selected"))} title="Choose when" expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
                 } else {
-                    <Button node_ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
-                        { for props.children.iter() }
-                    </Button>
+                    <Button node_ref={self.anchor.clone()} icon={props.trigger_icon.clone().or_else(|| props.icon.clone()).unwrap_or_default()} variant={props.variant} label={props.label.clone()} text={props.text.clone()} title={props.title.clone()} expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
                 }
 
                 if self.context_open {

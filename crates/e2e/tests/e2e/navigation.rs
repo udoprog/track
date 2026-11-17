@@ -340,8 +340,8 @@ pub(crate) async fn ensure_menu_rows_align(driver: &TestDriver, selector: &str) 
         .webdriver()
         .execute(
             "return [...document.querySelectorAll(arguments[0])].map(row => {
-            const icon = row.querySelector(':scope > .icon');
-            const label = row.querySelector(':scope > span:not(.icon)');
+            const icon = row.querySelector('.icon');
+            const label = row.querySelector('.plinth-button-label') || row.querySelector(':scope > span:not(.icon)');
             return [icon.getBoundingClientRect().left, label.getBoundingClientRect().left];
         });",
             vec![selector.into()],

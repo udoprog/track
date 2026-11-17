@@ -471,7 +471,6 @@ impl FiltersEditor {
 
                         html! {
                             <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={source.as_label()} onclick={on_toggle}>
-                                <span class="mark" />
                                 <span class={classes!("logo", source.as_id())} />
                             </Button>
                         }
@@ -502,10 +501,7 @@ impl FiltersEditor {
                         };
 
                         html! {
-                            <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={rt.as_str()} onclick={on_toggle}>
-                                <span class="mark" />
-                                <span>{rt.as_str()}</span>
-                            </Button>
+                            <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={rt.as_str()} onclick={on_toggle} label={rt.as_str()} />
                         }
                     })}
                 </>

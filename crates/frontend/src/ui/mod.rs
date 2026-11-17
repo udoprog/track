@@ -24,7 +24,7 @@ mod image;
 mod image_gallery;
 mod language_modal;
 mod language_picker;
-mod link;
+pub(crate) mod link;
 mod mark_time_menu;
 pub(crate) mod markdown;
 mod media_kind_toggle;

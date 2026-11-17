@@ -38,7 +38,7 @@ pub(crate) fn demo(name: &str) -> Option<Html> {
             </span>
         },
         "mark-watched" => html! {
-            <MarkTimeMenu quick={true} class="primary" icon="check" title="Mark watched" prompt="When did you watch this episode?" on_confirm={Callback::noop()} />
+            <MarkTimeMenu quick={true} variant="primary" icon="check" title="Mark watched" prompt="When did you watch this episode?" on_confirm={Callback::noop()} />
         },
         _ => return None,
     };

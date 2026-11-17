@@ -276,10 +276,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Specials in What's Next">
                                 { mine("", html! {
-                                    <Button class={classes!("input-checkbox", "has-text", specials.then_some("checked"))} role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change}>
-                                        <span class="mark" />
-                                        <span>{if specials { "Included" } else { "Skipped" }}</span>
-                                    </Button>
+                                    <Button class={classes!("input-checkbox", "has-text", specials.then_some("checked"))} role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change} label={if specials { "Included" } else { "Skipped" }} />
                                 }) }
                             </FormRow>
                         </div>
@@ -323,10 +320,7 @@ impl Component for Settings {
                             <div class="form-rows wide-labels">
                                 <FormRow stack=true label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
-                                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle}>
-                                            <span class="mark" />
-                                            <span>{if auto_sync { "Enabled" } else { "Disabled" }}</span>
-                                        </Button>
+                                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle} label={if auto_sync { "Enabled" } else { "Disabled" }} />
                                     }) }
                                 </FormRow>
 

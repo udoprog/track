@@ -405,10 +405,7 @@ impl Search {
 
         let action = match (&row.tracked, &row.track) {
             (Some(to), _) => html! {
-                <Link to={to.clone()} class="button has-text" title={format!("Open the tracked {}", kind_label.to_lowercase())}>
-                    <span class="icon check" aria-hidden="true" />
-                    <span>{"Tracked"}</span>
-                </Link>
+                <Button to={to.clone()} icon="check" label="Tracked" title={format!("Open the tracked {}", kind_label.to_lowercase())} />
             },
             (None, Some(track)) => {
                 let track = track.clone();

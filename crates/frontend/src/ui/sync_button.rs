@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::active_tasks::{ActiveTasks, SyncTarget};
 use crate::router::{QueueQuery, Route};
-use crate::ui::{Button, Link};
+use crate::ui::Button;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -37,21 +37,9 @@ pub(crate) fn SyncButton(props: &Props) -> Html {
         ..QueueQuery::default()
     });
 
-    let class = classes!(
-        "button",
-        props.text.is_some().then_some("mobile-has-text"),
-        props.label.is_some().then_some("has-text"),
-    );
+    let syncing = AttrValue::Static("Syncing");
 
     html! {
-        <Link {to} {class} title="Syncing, show in queue">
-            <span class="icon arrow-path spin" aria-hidden="true" />
-
-            if props.label.is_some() {
-                <span>{"Syncing"}</span>
-            } else if props.text.is_some() {
-                <span class="mobile-only">{"Syncing"}</span>
-            }
-        </Link>
+        <Button {to} icon="arrow-path" spin=true title="Syncing, show in queue" label={props.label.is_some().then(|| syncing.clone())} text={props.text.is_some().then_some(syncing)} />
     }
 }

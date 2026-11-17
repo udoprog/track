@@ -1055,15 +1055,12 @@ impl MovieDetail {
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(WatchMsg::MarkWatched)} text="Mark watched" />
+                                    <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(WatchMsg::MarkWatched)} text="Mark watched" />
 
                                     if movie.pending.is_some() {
                                         <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" pressed={Some(true)} onclick={on_remove_next} />
                                     } else {
-                                        <MarkTimeMenu class="has-text" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(WatchMsg::OnWatchNext)}>
-                                            <span class="icon bookmark-slash" aria-hidden="true" />
-                                            <span class="mobile-only">{"Not next movie"}</span>
-                                        </MarkTimeMenu>
+                                        <MarkTimeMenu trigger_icon="bookmark-slash" text="Not next movie" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(WatchMsg::OnWatchNext)} />
                                     }
 
                                     <Button icon="clock" title="Watch history" text="Watch history" onclick={link.callback(|_| UiMsg::ToggleOpenWatched)} />

@@ -424,10 +424,7 @@ impl Component for RemoteEditor {
                                         let next = effective.with(kind, !on);
 
                                         html! {
-                                            <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))}>
-                                                <span class="mark" />
-                                                <span>{kind.as_label()}</span>
-                                            </Button>
+                                            <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} label={kind.as_label()} />
                                         }
                                     }) }
 
@@ -475,10 +472,7 @@ impl Component for RemoteEditor {
                                         }
 
                                         <div class="plinth-push-end plinth-cluster plinth-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
-                                            <Button size={Size::Small} class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
-                                                <span class="mark" />
-                                                <span>{if enabled { "Enabled" } else { "Disabled" }}</span>
-                                            </Button>
+                                            <Button size={Size::Small} class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} label={if enabled { "Enabled" } else { "Disabled" }} />
 
                                             <Button size={Size::Small} icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
                                             <Button size={Size::Small} icon="trash" label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />

@@ -88,10 +88,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                                 };
 
                                 html! {
-                                    <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={on_toggle}>
-                                        <span class="mark" />
-                                        <span>{kind.as_label()}</span>
-                                    </Button>
+                                    <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={on_toggle} label={kind.as_label()} />
                                 }
                             }) }
                         </div>

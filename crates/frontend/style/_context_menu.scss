@@ -46,7 +46,7 @@
 
         // A choice that is not the current one keeps its check's room, so
         // the labels line up.
-        &.unchecked>.icon {
+        &.unchecked .icon {
             visibility: hidden;
         }
     }

@@ -653,10 +653,7 @@ impl MediaSettingsModal {
 
                 if admin {
                     <FormRow label="Automatic sync">
-                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Sync automatically" onclick={on_auto_sync}>
-                            <span class="mark" />
-                            {if auto_sync { "Enabled" } else { "Disabled" }}
-                        </Button>
+                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Sync automatically" label={if auto_sync { "Enabled" } else { "Disabled" }} onclick={on_auto_sync} />
                     </FormRow>
                 }
 

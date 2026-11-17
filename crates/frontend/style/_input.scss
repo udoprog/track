@@ -2,20 +2,6 @@
 @use 'vars' as v;
 @use 'grid' as g;
 
-@mixin is-icon-only {
-    @include g.on-mobile {
-        &:not(.mobile-has-text, .has-text) {
-            @content;
-        }
-    }
-
-    @include g.on-desktop {
-        &:not(.desktop-has-text, .has-text) {
-            @content;
-        }
-    }
-}
-
 @mixin has-text {
     &.has-text {
         &>.icon:first-child, &>.mark:first-child {
@@ -36,7 +22,7 @@
             }
         }
 
-        &:not(.mobile-has-text, .has-text) {
+        &:not(.plinth-button, .mobile-has-text, .has-text) {
             justify-content: center;
         }
     }
@@ -50,7 +36,7 @@
             }
         }
 
-        &:not(.desktop-has-text, .has-text) {
+        &:not(.plinth-button, .desktop-has-text, .has-text) {
             justify-content: center;
         }
     }
@@ -108,8 +94,9 @@
     user-select: none;
 }
 
-button,
-.button {
+// The app's own buttons, and what plinth's (`.plinth-button`, configured in
+// main.scss) take from them: the icon colour, and `fill` and `selected`.
+button {
     @include input-base;
 
     --icon-color: #{v.$text-color};
@@ -125,15 +112,15 @@ button,
 
     @include button-color(neutral);
 
-    &.primary {
+    &.plinth-primary {
         @include button-color(accent);
     }
 
-    &.success {
+    &.plinth-success {
         @include button-color(success);
     }
 
-    &.danger {
+    &.plinth-danger {
         @include button-color(danger);
     }
 
@@ -141,29 +128,17 @@ button,
         flex: 1;
     }
 
-    // A dense head's or row's actions; icon-only ones stay square. Phones
-    // keep the touch height.
-    &.small {
-        @include g.on-desktop {
-            height: v.$input-height-sm;
-            font-size: v.$font-xs;
-
-            @include is-icon-only {
-                min-width: v.$input-height-sm;
-            }
-        }
-    }
-
-    // Icon-only buttons are square, so a row of them reads as one set.
+    // The app's own icon-only buttons are square, so a row of them reads as
+    // one set.
     @include g.on-desktop {
-        &:not(.desktop-has-text, .has-text) {
+        &:not(.plinth-button, .has-text) {
             justify-content: center;
             min-width: v.$input-height;
         }
     }
 
     @include g.on-mobile {
-        &:not(.mobile-has-text, .has-text) {
+        &:not(.plinth-button, .mobile-has-text, .has-text) {
             justify-content: center;
             min-width: v.$input-height-touch;
         }
@@ -279,7 +254,7 @@ button,
     cursor: pointer;
 
     // Sized like the icons beside it, not to the height of the toggle.
-    >.mark {
+    .mark {
         height: v.$icon-size;
         aspect-ratio: 1;
         flex-shrink: 0;
@@ -292,12 +267,12 @@ button,
         }
     }
 
-    &.checked>.mark {
+    &.checked .mark {
         mask-image: url('/static/icons/check.svg');
         background-color: v.$text-primary;
     }
 
-    &:not(.checked)>.mark {
+    &:not(.checked) .mark {
         mask-image: url('/static/icons/x-mark.svg');
         background-color: v.$text-primary;
     }

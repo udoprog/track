@@ -684,7 +684,10 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     </Link>
                 }
 
-                <Button class="toolbar-item" icon="question-mark-circle" text="Help" title="Help" haspopup="dialog" onclick={on_help} />
+                <plinth::IconButton class="toolbar-item mobile-has-text" title="Help" haspopup=true onclick={on_help}>
+                    <span class="icon question-mark-circle" aria-hidden="true" />
+                    <span class="mobile-only">{"Help"}</span>
+                </plinth::IconButton>
 
                 <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
                     <span class="icon user-circle" aria-hidden="true" />

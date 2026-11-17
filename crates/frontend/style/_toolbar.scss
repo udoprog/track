@@ -52,6 +52,11 @@
         max-width: 100%;
         justify-self: center;
         grid-column: 1 / -1;
+
+        // Rows of a menu: each item's icon and label start at its edge.
+        >* {
+            justify-content: flex-start;
+        }
     }
 }
 

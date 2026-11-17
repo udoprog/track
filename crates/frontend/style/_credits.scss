@@ -51,7 +51,7 @@
     color: v.$link-color;
     cursor: pointer;
     font-size: v.$font-sm;
-    padding: v.$padding-md 0;
+    padding: v.$padding v.$padding-lg;
 
     &:hover {
         text-decoration: underline;

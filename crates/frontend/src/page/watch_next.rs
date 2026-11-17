@@ -765,16 +765,14 @@ impl WatchNext {
                     <div class="plinth-cluster plinth-nowrap plinth-tight plinth-between">
                         <div class="input-group">
                             if aired_in_past {
-                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
+                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
                             } else {
                                 <Button icon="check" variant={Variant::Primary} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
                         </div>
 
                         <div class="plinth-cluster plinth-nowrap plinth-loose">
-                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
-                                <span class="icon bookmark" aria-hidden="true" />
-                            </MarkTimeMenu>
+                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))} />
 
                             if let Some((show, episode)) = skip_ids {
                                 <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
