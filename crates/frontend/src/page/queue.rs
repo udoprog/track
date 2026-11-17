@@ -8,7 +8,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, Link, PageHead, PaginationButtons, Skeleton, Variant};
+use crate::ui::{Button, Link, PaginationButtons, Skeleton, Variant};
 
 const PAGE_SIZE: usize = 20;
 /// Completed tasks kept, matching the server's history.
@@ -178,7 +178,7 @@ impl Component for Queue {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
-                <PageHead hidden=true title="Queue" />
+                <h1 class="plinth-visually-hidden">{"Queue"}</h1>
 
                 { self.view_now(ctx) }
 

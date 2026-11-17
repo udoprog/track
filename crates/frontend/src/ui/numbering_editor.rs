@@ -2010,7 +2010,7 @@ impl NumberingEditor {
             html! {
                 <span class="numbering-map-source" title={label.clone()}>
                     <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
-                    <span class="numbering-map-label visually-hidden">{label.clone()}</span>
+                    <span class="numbering-map-label plinth-visually-hidden">{label.clone()}</span>
                     <select class="input-select numbering-map-in-view" aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
                         if current.is_none() {
                             <option value="" selected=true hidden=true>{"–"}</option>

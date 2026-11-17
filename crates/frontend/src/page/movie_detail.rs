@@ -837,8 +837,8 @@ impl MovieDetail {
             .unwrap_or_default();
 
         html! {
-            <section data-testid="credits">
-                <h2 class="section-title">{"Cast & crew"}</h2>
+            <section class="plinth-stack" data-testid="credits">
+                <plinth::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -847,7 +847,7 @@ impl MovieDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle plinth-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {

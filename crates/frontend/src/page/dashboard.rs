@@ -4,7 +4,7 @@ use crate::background::Background;
 use crate::error::Error;
 use crate::help;
 use crate::router::{DashboardQuery, DashboardView, MediaSelection, Route, Router};
-use crate::ui::{Button, Help, MediaKindToggle, PageHead};
+use crate::ui::{Button, Help, MediaKindToggle};
 
 use super::{Calendar, History, ScheduleRange, WatchNext};
 
@@ -94,7 +94,7 @@ impl Component for Dashboard {
 
         html! {
             <>
-                <PageHead hidden=true title="Dashboard" />
+                <h1 class="plinth-visually-hidden">{"Dashboard"}</h1>
 
                 <div class="page-tabs">
                     <nav class="tabs" aria-label="Dashboard views">

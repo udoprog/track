@@ -9,8 +9,8 @@ use crate::help;
 use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
-    LanguagePicker, Link, NumberingsEditor, PageHead, RELEASE_KINDS, RELEASE_SOURCES, SecretInput,
-    Skeleton, SyncKindsEditor, SyncLanguagesEditor, XemLookupEditor,
+    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton,
+    SyncKindsEditor, SyncLanguagesEditor, XemLookupEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -198,7 +198,7 @@ impl Component for Settings {
 
         html! {
             <>
-                <PageHead hidden=true title="Settings" />
+                <h1 class="plinth-visually-hidden">{"Settings"}</h1>
 
                 <div class={classes!("settings-layout", admin.then_some("has-nav"))}>
                 if admin {

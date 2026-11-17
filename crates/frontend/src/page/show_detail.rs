@@ -1818,8 +1818,8 @@ impl ShowDetail {
             .unwrap_or_default();
 
         html! {
-            <section data-testid="credits">
-                <h2 class="section-title">{"Cast & crew"}</h2>
+            <section class="plinth-stack" data-testid="credits">
+                <plinth::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -1828,7 +1828,7 @@ impl ShowDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle plinth-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {
@@ -2354,7 +2354,7 @@ impl ShowDetail {
                 </Button>
 
                 <div class="shrink plinth-stack plinth-tight">
-                    <div class="section-head">
+                    <div class="plinth-section-head">
                         <div class="plinth-cluster plinth-tight plinth-baseline">
                             <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 

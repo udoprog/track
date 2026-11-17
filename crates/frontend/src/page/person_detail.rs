@@ -10,8 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, PageHead,
-    RemoteEditor, RemoteSourceKind, SyncButton, TranslatedText, Variant,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor,
+    RemoteSourceKind, SyncButton, TranslatedText, Variant,
 };
 
 /// Load state for the person this page renders.
@@ -406,7 +406,7 @@ impl PersonDetail {
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
                 <div class="shrink plinth-stack">
-                    <PageHead title={name} sub={person.department.department().map(|d| AttrValue::from(d.to_owned()))}>
+                    <plinth::PageHead title={html! {name}} subtitle={person.department.department().map(|d| html! {d.to_owned()})}>
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
@@ -423,7 +423,7 @@ impl PersonDetail {
                                 }
                             }
                         </div>
-                    </PageHead>
+                    </plinth::PageHead>
 
                     <div class="detail-sources plinth-cluster">
                         {for person.remotes.iter().filter_map(|r| {
@@ -509,8 +509,8 @@ impl PersonDetail {
         }
 
         html! {
-            <section data-testid="filmography">
-                <h2 class="section-title">{"Known for"}</h2>
+            <section class="plinth-stack" data-testid="filmography">
+                <plinth::SectionHead title={html! {"Known for"}} />
 
                 <div class="person-grid">
                     { for titles.iter().map(|(c, roles)| self.view_credit(c, roles)) }

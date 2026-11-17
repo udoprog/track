@@ -2,7 +2,6 @@ use auth::yew023::AccountPanel;
 use yew::prelude::*;
 
 use crate::background::Background;
-use crate::ui::PageHead;
 
 /// The signed-in user's own account.
 #[function_component]
@@ -11,7 +10,7 @@ pub(crate) fn Account() -> Html {
 
     html! {
         <>
-            <PageHead hidden=true title="Account" />
+            <h1 class="plinth-visually-hidden">{"Account"}</h1>
 
             <div class="settings">
                 <AccountPanel />

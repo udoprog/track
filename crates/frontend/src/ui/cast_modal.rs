@@ -35,7 +35,7 @@ pub(crate) fn cast_card_on(credit: &api::Credit, raised: bool) -> Html {
     let subtitle = credit_subtitle(credit).map(str::to_owned);
 
     html! {
-        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "card", "flush", raised.then_some("raised"))}>
+        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "plinth-card", "plinth-inset", "plinth-flush", raised.then_some("raised"))}>
             <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
 
             <div class="cast-info">

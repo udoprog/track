@@ -15,8 +15,7 @@ use crate::router::{
     TrackedFilter,
 };
 use crate::ui::{
-    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PageHead, PaginationButtons, SortMenu,
-    TimePreset,
+    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, SortMenu, TimePreset,
 };
 
 /// The fields the list can be sorted by, as `(value, label)`.
@@ -299,7 +298,7 @@ impl Component for MediaList {
         html! {
             <>
                 // The app bar already says which page this is.
-                <PageHead hidden=true title="Media" />
+                <h1 class="plinth-visually-hidden">{"Media"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">

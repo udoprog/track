@@ -1,7 +1,14 @@
 // plinth's tokens, then the rules of the parts of plinth the app uses, in
 // plinth's own order (style/_index.scss), so the app's own rules refine them.
-@use '../../../../plinth/style/tokens' as plinth-tokens;
+@use 'vars' as v;
+// The app's small text and its controls, where plinth's are 13px and 36px.
+@use '../../../../plinth/style/tokens' as plinth-tokens with (
+    $text-sm: v.$font-sm,
+    $control-height: v.$input-height
+);
 @use '../../../../plinth/style/layout' as plinth-layout;
+@use '../../../../plinth/style/heads' as plinth-heads;
+@use '../../../../plinth/style/utilities' as plinth-utilities;
 @use 'theme';
 @use 'icons';
 @use 'logos';
@@ -20,7 +27,6 @@
 
 @use 'grid' as g;
 @use 'input' as i;
-@use 'vars' as v;
 
 *,
 *::before,
@@ -52,16 +58,6 @@ p {
 .clickable {
     cursor: pointer;
     user-select: none;
-}
-
-// Read by screen readers and agents, not drawn.
-.visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
 }
 
 // Holds the toast; takes no room of its own.
@@ -797,7 +793,7 @@ h1.auth-heading {
 }
 
 .auth-hidden {
-    @extend .visually-hidden;
+    @include plinth-tokens.visually-hidden;
 }
 
 // The components' buttons carry text, not icons. They have no class of their

@@ -1,5 +1,7 @@
 // Rows, columns, splits and actions are plinth's `.plinth-cluster` and
-// `.plinth-stack` (with their gap and alignment modifiers) and `.plinth-push-end`.
+// `.plinth-stack` (with their gap and alignment modifiers) and `.plinth-push-end`;
+// heads and cards are plinth's PageHead, SectionHead (`.plinth-section-head`)
+// and `.plinth-card`.
 // This keeps what plinth does not do:
 //
 // .desktop-row .mobile-row  a row on wide screens only / on phones only (no
@@ -12,14 +14,6 @@
 // .grow            a flex child that takes the free space
 // .shrink          may be narrower than its content (a grid or flex child that
 //                  must not push its parent wider)
-// .section-title   the heading of a section of a page (an h2)
-// .page-head       a page's heading row: `.page-head-title`, then actions
-//                  (put `.plinth-push-end` on the actions); wraps on phones
-// .section-head    a section's heading row inside a page, card or list item:
-//                  its heading, then actions (`.plinth-push-end`)
-// .card            a raised surface
-//   .compact           less padding
-//   .flush             no padding, clipped to its corners (a poster on top)
 // .title           a title line in body text weight
 //   .sm                base size instead of large
 //   .clamp             one line, ellipsis when it overflows
@@ -82,6 +76,11 @@
     }
 }
 
+// Section titles in the text colour, not the accent of the app's headings.
+.plinth-section-head-title {
+    color: v.$text-primary;
+}
+
 .grow {
     flex: 1;
 }
@@ -92,52 +91,6 @@
 
 .shrink {
     min-width: 0;
-}
-
-.section-title {
-    margin: 0 0 v.$gap-sm;
-    font-size: v.$font-xl;
-    color: v.$text-primary;
-}
-
-.page-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs v.$gap-sm;
-    min-width: 0;
-}
-
-.page-head-title {
-    margin: 0;
-    min-width: 0;
-    font-size: v.$font-title;
-    font-weight: v.$bold-weight;
-    overflow-wrap: anywhere;
-}
-
-.section-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: v.$gap-xs v.$gap-sm;
-    min-width: 0;
-}
-
-.card {
-    background: v.$bg-item;
-    border-radius: v.$radius;
-    padding: v.$gap;
-
-    &.compact {
-        padding: v.$padding-lg;
-    }
-
-    &.flush {
-        padding: 0;
-        overflow: hidden;
-    }
 }
 
 .title {

@@ -2,7 +2,6 @@ use auth::yew023::AdminUsers;
 use yew::prelude::*;
 
 use super::account::use_page_title;
-use crate::ui::PageHead;
 
 /// Managing users, for administrators.
 #[function_component]
@@ -11,7 +10,7 @@ pub(crate) fn Users() -> Html {
 
     html! {
         <>
-            <PageHead hidden=true title="Users" />
+            <h1 class="plinth-visually-hidden">{"Users"}</h1>
 
             <div class="settings wide">
                 <AdminUsers />
