@@ -60,7 +60,7 @@
     --muted: var(--text-muted);
     --shadow-1: 0 8px 32px var(--shadow-strong);
     // The app's cards have no edge.
-    --card-border: transparent;
+    --card-border-width: 0;
 
     --backdrop-opacity: 0.18;
     // Third-party logos are drawn for dark backgrounds.
