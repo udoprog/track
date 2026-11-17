@@ -68,6 +68,16 @@
     $skeleton-line-height: v.$input-height-sm,
     $skeleton-line-inset: 0,
     $skeleton-phone-height: v.$input-height-touch,
+    // A raised card: the surface, a soft danger edge and a deep shadow, the
+    // message in medium weight over its causes.
+    $error-box-padding: v.$gap-sm v.$gap-sm v.$gap-sm v.$gap,
+    $error-box-gap: v.$gap-sm,
+    $error-box-fill: v.$bg-surface,
+    $error-box-edge: color-mix(in srgb, v.$color-danger 45%, transparent),
+    $error-box-shadow: 0 8px 32px v.$shadow-strong,
+    $error-box-message-weight: v.$bold-weight,
+    $error-box-cause-font: inherit,
+    $error-box-cause-text: v.$font-sm,
     // Settings' label column; hints in the text's own line height.
     $field-label-width: 200px,
     $field-message-line: normal,
@@ -92,6 +102,7 @@
         "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
         "menu.context", "menu.current", "menu.danger", "menu.detail", "menu.heading", "menu.note",
         "menu.row-actions", "menu.separator", "menu.split-button", "menu.tight", "menu.widths",
+        "notices.empty-state", "notices.notice",
         "pager.edges",
         "popover.match-anchor",
         "skeleton.group", "skeleton.loadable", "skeleton.row", "skeleton.short", "skeleton.spinner",
@@ -115,6 +126,7 @@
 @use '../../../../plinth/style/buttons' as plinth-buttons;
 @use '../../../../plinth/style/fields' as plinth-fields;
 @use '../../../../plinth/style/icons' as plinth-icons;
+@use '../../../../plinth/style/notices' as plinth-notices;
 @use '../../../../plinth/style/skeleton' as plinth-skeleton;
 @use '../../../../plinth/style/popover' as plinth-popover;
 @use '../../../../plinth/style/pager' as plinth-pager;
@@ -194,8 +206,7 @@ p {
     margin: 0 auto;
 }
 
-// Something went wrong: a card under the app bar with what was being done in
-// bold, its causes quietly under it, and a way to dismiss it.
+// Something went wrong: plinth's ErrorBox as a card under the app bar.
 #error {
     position: fixed;
     top: v.$toolbar-height + v.$gap-xs;
@@ -203,41 +214,6 @@ p {
     transform: translateX(-50%);
     z-index: 300;
     width: min(560px, calc(100vw - #{v.$gap * 2}));
-
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: start;
-    gap: v.$gap-sm;
-    padding: v.$gap-sm v.$gap-sm v.$gap-sm v.$gap;
-
-    background: v.$bg-surface;
-    border: 1px solid color-mix(in srgb, v.$color-danger 45%, transparent);
-    border-radius: v.$radius-lg;
-    box-shadow: 0 8px 32px v.$shadow-strong;
-    color: v.$text-primary;
-
-    >.icon {
-        --icon-color: #{v.$color-danger};
-        margin-top: v.$padding-md;
-    }
-}
-
-.error-text {
-    display: flex;
-    flex-direction: column;
-    gap: v.$padding;
-    min-width: 0;
-    padding-top: v.$padding-md;
-    overflow-wrap: anywhere;
-
-    >strong {
-        font-weight: v.$bold-weight;
-    }
-}
-
-.error-cause {
-    color: v.$text-muted;
-    font-size: v.$font-sm;
 }
 
 #content {

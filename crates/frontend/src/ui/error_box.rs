@@ -1,7 +1,6 @@
 use yew::prelude::*;
 
 use crate::error::RcError;
-use crate::ui::Button;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -9,23 +8,22 @@ pub(crate) struct Props {
     pub(crate) onclearerror: Callback<()>,
 }
 
+/// plinth's ErrorBox: what was being done, then its causes, most specific
+/// last, and a dismiss button.
 #[function_component]
 pub(crate) fn ErrorBox(props: &Props) -> Html {
     let mut sources = props.error.sources();
     let message = sources.next().map(|e| e.to_string()).unwrap_or_default();
+    let causes = sources.map(|e| e.to_string()).collect::<Vec<_>>();
+    let cause = (!causes.is_empty()).then(|| AttrValue::from(causes.join(": ")));
 
     html! {
-        <>
-            <span class="icon exclamation-triangle" aria-hidden="true" />
-
-            <div class="error-text">
-                <strong>{message}</strong>
-
-                // What caused it, most specific last.
-                { for sources.map(|e| html! { <span class="error-cause">{e.to_string()}</span> }) }
-            </div>
-
-            <Button icon="x-mark" title="Dismiss error" onclick={props.onclearerror.reform(|_| ())} />
-        </>
+        <plinth::ErrorBox
+            icon={html! { <span class="icon exclamation-triangle danger" /> }}
+            {cause}
+            ondismiss={props.onclearerror.reform(|_| ())}
+            dismiss_label="Dismiss error">
+            {message}
+        </plinth::ErrorBox>
     }
 }

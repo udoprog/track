@@ -292,12 +292,15 @@ pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -
     driver.find_one_by("#page .icon.arrow-path.spin").await?;
     track.stop().await?;
 
-    let card = driver.find_one_by("#error[role=alert]").await?;
+    driver.find_one_by("#error [role=alert]").await?;
+    let card = driver.find_one_by("#error").await?;
     ensure!(
         card.css("position").await? == "fixed",
         "the error pushes the page down"
     );
-    driver.find_one_by("#error .error-text strong").await?;
+    driver
+        .find_one_by("#error .plinth-error-box-message")
+        .await?;
 
     driver
         .find_one_by("#error [title='Dismiss error']")

@@ -221,7 +221,7 @@ impl Component for App {
                 <ActiveTasksProvider>
                     <div id="application">
                         if let Some(ref error) = self.error {
-                            <div id="error" role="alert">
+                            <div id="error">
                                 <ErrorBox error={error.clone()} onclearerror={self.onclearerror.clone()} />
                             </div>
                         }
