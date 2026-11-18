@@ -5,6 +5,13 @@ fn main() {
         // Track's classes are not prefixed yet (416edee6 renames them), so
         // every local class is let through for now.
         .foreign(["*"])
+        // The Cargo features less the ones they pull in for markup track never
+        // renders (Dialog and Confirm footers, Reorder's rows, badges, media,
+        // tooltips), so their partials stay out of the CSS.
+        .features([
+            "button", "confirm", "field", "head", "icons", "input", "layout", "menu", "notice",
+            "overlay", "pager", "reorder", "skeleton",
+        ])
         .with_module("style/_vars.scss", "v")
         // The app's small text, controls, phone breakpoint, buttons (filled, no
         // edge, touch height on phones), dialogs (centred) and popovers (rounder,
@@ -132,7 +139,6 @@ fn main() {
             "pager.edges", "pager.states", "pager.summary",
             "popover.match-anchor",
             "skeleton.group", "skeleton.row", "skeleton.short", "skeleton.spinner",
-            "tokens.actions", "tokens.media", "tokens.tooltip",
             "utilities.clamp", "utilities.focus-ring", "utilities.phone-only",
             "utilities.scroll-area",
             )"#,
