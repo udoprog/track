@@ -178,7 +178,7 @@ fn out_of_range_times_are_mismatches() -> Result<()> {
     let error = read::<Timestamp>(&c, i64::MAX).unwrap_err();
     assert_eq!(error.code(), Code::MISMATCH);
 
-    let error = read::<Date>(&c, 2026_13_40i64).unwrap_err();
+    let error = read::<Date>(&c, 20261340i64).unwrap_err();
     assert_eq!(error.code(), Code::MISMATCH);
     Ok(())
 }

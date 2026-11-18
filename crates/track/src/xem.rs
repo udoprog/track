@@ -200,13 +200,16 @@ struct Page<T> {
 /// The most show pages fetched to confirm one show's XEM id.
 const MAX_CANDIDATES: usize = 3;
 
+type ShowsCache = Arc<Mutex<HashMap<(), Page<Vec<(u32, String)>>>>>;
+type ShowPagesCache = Arc<Mutex<HashMap<u32, Page<Vec<(String, String)>>>>>;
+
 #[derive(Clone)]
 pub(crate) struct Client {
     http: reqwest::Client,
     base: Arc<str>,
     havemaps: Arc<Mutex<HashMap<String, HaveMap>>>,
-    shows: Arc<Mutex<HashMap<(), Page<Vec<(u32, String)>>>>>,
-    show_pages: Arc<Mutex<HashMap<u32, Page<Vec<(String, String)>>>>>,
+    shows: ShowsCache,
+    show_pages: ShowPagesCache,
 }
 
 impl Client {
@@ -557,7 +560,7 @@ fn candidates<'a>(shows: &[(u32, String)], names: impl IntoIterator<Item = &'a s
                 return None;
             }
 
-            let exact = names.iter().any(|n| *n == show);
+            let exact = names.contains(&show);
 
             if !exact && !names.iter().any(|n| n.starts_with(&show)) {
                 return None;

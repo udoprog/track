@@ -164,6 +164,7 @@ pub(crate) async fn build_auth(db: &Database, trusted_proxies: &[IpAddr]) -> Res
         .build())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     listener: TcpListener,
     db: &Path,
