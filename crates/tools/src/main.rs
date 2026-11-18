@@ -27,7 +27,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Regenerate the flag/icon name lists (the Trunk pre_build entry point).
+    /// Regenerate the flag/icon name lists (the trug pre_build hook).
     Scss,
     /// Refresh the vendored icon and flag SVGs from their pinned revisions.
     Vendor {
@@ -106,7 +106,7 @@ fn write_file(output: &Path, body: &str) -> Result<()> {
 
 fn write_bytes(output: &Path, body: &[u8]) -> Result<()> {
     // Skip rewriting unchanged content so we don't bump the mtime (which would retrigger
-    // Trunk's file watcher into a rebuild loop) or create needless git churn.
+    // trug's file watcher into a rebuild loop) or create needless git churn.
     if fs::read(output).is_ok_and(|existing| existing == body) {
         return Ok(());
     }

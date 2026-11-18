@@ -11,3 +11,4 @@ sockel-build = { path = "../sockel/sockel-build" }
 watchword = { path = "../watchword" }
 watchword-core = { path = "../watchword/crates/watchword-core" }
 watchword-yew023 = { path = "../watchword/crates/watchword-yew023" }
+yew-e2e = { path = "../yew-e2e" }

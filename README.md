@@ -37,11 +37,11 @@ Still in the experimental stage. Users beware!
 
 ## Running track
 
-The frontend is built with [trunk] into `dist/`. The server embeds that
+The frontend is built with [trug] into `dist/`. The server embeds that
 directory, so it has to be built first:
 
 ```text
-$ trunk build --release
+$ trug build --release
 $ cargo run --release
 ```
 
@@ -57,18 +57,18 @@ email.
 Once it is running, go to `Settings` and configure your API keys for
 TheTVDB and TheMovieDB. Unfortunately I cannot help you with this.
 
-[trunk]: https://trunkrs.dev
+[trug]: https://github.com/udoprog/trug
 
 <br>
 
 ## Development
 
 During development you can run the server and the frontend separately. The
-trunk dev server proxies `/api/` and `/ws` to the server on port `3000`:
+trug dev server proxies `/api/` and `/ws` to the server on port `3000`:
 
 ```text
 $ cargo run
-$ trunk serve
+$ trug serve
 ```
 
 To preview loading states as they would look on a slow connection, you can

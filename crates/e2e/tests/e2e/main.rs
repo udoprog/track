@@ -39,7 +39,7 @@ use tokio::task::JoinHandle;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use yew_e2e::{Config, Fixture, TestDriver};
+use yew_e2e::{Config, Fixture, Frontend, TestDriver};
 
 /// Media for the tests that ask for it with `(seeded)`.
 const SEED: &str = include_str!("seed.sql");
@@ -158,7 +158,9 @@ impl Fixture for Track {
     type Setup = Setup;
 
     fn config() -> Config {
-        Config::default().about("Browser tests for track.")
+        Config::default()
+            .about("Browser tests for track.")
+            .frontend(Frontend::Trug(PathBuf::new()))
     }
 
     /// The servers run in this process; only their warnings reach the output.

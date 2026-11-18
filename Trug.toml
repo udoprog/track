@@ -1,12 +1,19 @@
 [build]
 target = "crates/frontend/index.html"
+# The server embeds dist/ at the repository root.
+dist = "dist"
 
-# The generated Sass lists are written by the pre_build hooks below; ignore them so
-# rewriting them doesn't retrigger the watcher into a rebuild loop.
+# The generated Sass lists are written by the pre_build hook below; ignore them so
+# rewriting them doesn't retrigger the watcher into a rebuild loop. A server run
+# from the checkout writes its database and image cache here, and .claude holds
+# worktrees; none of them should rebuild the page.
 [watch]
 ignore = [
     "crates/frontend/style/_flags_generated.scss",
     "crates/frontend/style/_icons_generated.scss",
+    "*.db*",
+    "image-cache/**",
+    ".claude/**",
 ]
 
 # Regenerate the flag/icon Sass name lists from the vendored SVGs before compiling

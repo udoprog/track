@@ -68,7 +68,7 @@ pub struct Args {
     #[arg(long, value_name = "MIN..MAX")]
     delay: Option<RandomDelay>,
 
-    /// Serve the frontend from this directory (a `trunk build` output) instead
+    /// Serve the frontend from this directory (a `trug build` output) instead
     /// of the bundled one.
     #[arg(long, value_name = "DIR")]
     dist: Option<PathBuf>,
