@@ -1,6 +1,6 @@
 [build]
 binary = "track"
-pre_build = ["trunk build --release"]
+pre_build = ["trug build --release"]
 features = ["bundle"]
 
 [deploy.systemd]
