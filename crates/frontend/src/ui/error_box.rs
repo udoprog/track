@@ -1,5 +1,6 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::error::RcError;
 
 #[derive(Properties, PartialEq)]
@@ -20,7 +21,7 @@ pub(crate) fn ErrorBox(props: &Props) -> Html {
 
     html! {
         <sockel::ErrorBox
-            icon={html! { <span class="icon exclamation-triangle danger" /> }}
+            icon={html! { <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE, class::DANGER)} /> }}
             {causes}
             ondismiss={props.onclearerror.reform(|_| ())}
             dismiss_label="Dismiss error">

@@ -1,3 +1,4 @@
+use crate::class;
 use yew::prelude::*;
 
 use sockel::{Reorder, ReorderHandle, ReorderItem};
@@ -44,17 +45,17 @@ pub(crate) fn XemLookupEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class={classes!("form", "xem-lookup")} {on_move} quick_keys=true titles=true>
+        <Reorder class={classes!(class::FORM, "xem-lookup")} {on_move} quick_keys=true titles=true>
             {
                 for sources.iter().map(|source| html_nested! {
-                    <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group sockel-cluster sockel-nowrap">
+                    <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP)}>
                         <ReorderHandle />
 
-                        <span class="input-label has-text">
-                            <span class={classes!("logo", source.as_id())} />
+                        <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>
+                            <span class={classes!(class::LOGO, class::logo(source.as_id()))} />
                         </span>
 
-                        <span class="input-label has-text">{format!("{} id", source.as_label())}</span>
+                        <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{format!("{} id", source.as_label())}</span>
                     </ReorderItem>
                 })
             }

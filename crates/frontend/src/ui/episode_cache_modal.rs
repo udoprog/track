@@ -4,6 +4,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 
 use super::{Button, Modal, Variant};
@@ -78,7 +79,7 @@ impl Component for EpisodeCacheModal {
         let title = ctx.props().title.clone();
 
         html! {
-            <Modal icon="circle-stack" title={title} on_close={on_close}>
+            <Modal icon={class::ICON_CIRCLE_STACK} title={title} on_close={on_close}>
                 { self.view_content(ctx) }
             </Modal>
         }
@@ -147,46 +148,46 @@ impl EpisodeCacheModal {
 
     fn view_content(&self, ctx: &Context<Self>) -> Html {
         let Some(entries) = self.entries.as_ref() else {
-            return html!(<div class="text-muted">{"Loading…"}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"Loading…"}</div>);
         };
 
         if entries.is_empty() {
-            return html!(<div class="text-muted">{"No cache entries recorded."}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"No cache entries recorded."}</div>);
         }
 
         let link = ctx.link();
         let admin = self.auth.is_admin();
 
         html! {
-            <div class="sockel-stack">
+            <div class={sockel::class::STACK}>
                 { for entries.iter().map(|e| {
                     let source = e.source;
                     let cache = &e.cache;
 
                     html! {
-                        <div class="sockel-stack">
-                            <div class="sockel-cluster sockel-between sockel-loose sockel-top">
+                        <div class={sockel::class::STACK}>
+                            <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE, sockel::class::TOP)}>
                                 <h4>{source.as_label()}</h4>
 
                                 if admin {
-                                    <Button icon="arrow-path" variant={Variant::Danger} title="Clear cache" onclick={link.callback(move |_| Msg::Purge(source))} />
+                                    <Button icon={class::ICON_ARROW_PATH} variant={Variant::Danger} title="Clear cache" onclick={link.callback(move |_| Msg::Purge(source))} />
                                 }
                             </div>
 
-                            <div class="input-group">
+                            <div class={class::INPUT_GROUP}>
                                 if let Some(ref etag) = cache.etag {
-                                    <span class="input-label has-text">{"ETag"}</span>
-                                    <span class="sockel-input-box input-value fill">{etag}</span>
+                                    <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{"ETag"}</span>
+                                    <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE, class::FILL)}>{etag}</span>
                                 }
 
                                 if let Some(ref last_updated) = cache.last_updated {
-                                    <span class="input-label has-text">{"Last Updated"}</span>
-                                    <span class="sockel-input-box input-value fill">{last_updated}</span>
+                                    <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{"Last Updated"}</span>
+                                    <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE, class::FILL)}>{last_updated}</span>
                                 }
 
                                 if !cache.kinds.is_empty() {
-                                    <span class="input-label has-text">{"Kinds"}</span>
-                                    {for cache.kinds.iter().map(|k| html!(<span class="sockel-input-box input-value">{k.as_label()}</span>))}
+                                    <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{"Kinds"}</span>
+                                    {for cache.kinds.iter().map(|k| html!(<span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE)}>{k.as_label()}</span>))}
                                 }
                             </div>
 
@@ -194,12 +195,12 @@ impl EpisodeCacheModal {
                                 <h4>{"Errors"}</h4>
 
                                 { for cache.errors.iter().map(|e| html! {
-                                    <div class="input-group">
-                                        <span class="input-label has-text">{e.kind.as_label()}</span>
-                                        <span class="sockel-input-box input-value">{&e.key}</span>
-                                        <span class="sockel-input-box input-value fill">{&e.message}</span>
-                                        <span class="input-label has-text">{"Retries"}</span>
-                                        <span class="sockel-input-box input-value">{e.expires_at().to_string()}</span>
+                                    <div class={class::INPUT_GROUP}>
+                                        <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{e.kind.as_label()}</span>
+                                        <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE)}>{&e.key}</span>
+                                        <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE, class::FILL)}>{&e.message}</span>
+                                        <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{"Retries"}</span>
+                                        <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE)}>{e.expires_at().to_string()}</span>
                                     </div>
                                 }) }
                             }

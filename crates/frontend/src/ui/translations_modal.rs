@@ -3,6 +3,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 
 use super::Modal;
@@ -77,7 +78,7 @@ impl Component for TranslationsModal {
         let on_close = ctx.props().on_close.clone();
 
         html! {
-            <Modal icon="language" title="Translations" on_close={on_close}>
+            <Modal icon={class::ICON_LANGUAGE} title="Translations" on_close={on_close}>
                 { self.view_content() }
             </Modal>
         }
@@ -142,15 +143,15 @@ impl TranslationsModal {
 
     fn view_content(&self) -> Html {
         let Some(ref translations) = self.translations else {
-            return html!(<div class="text-muted">{"Loading…"}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"Loading…"}</div>);
         };
 
         if translations.is_empty() {
-            return html!(<div class="text-muted">{"No translations available."}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"No translations available."}</div>);
         }
 
         html! {
-            <div class="translations sockel-stack sockel-loose">
+            <div class={classes!(class::TRANSLATIONS, sockel::class::STACK, sockel::class::LOOSE)}>
                 { for FIELDS.iter().filter_map(|&(kind, label)| {
                     let mut rows = translations.iter().filter(|t| t.kind == kind).peekable();
 
@@ -161,7 +162,7 @@ impl TranslationsModal {
                         <section>
                             <h3>{label}</h3>
 
-                            <div class="translation-rows">
+                            <div class={class::TRANSLATION_ROWS}>
                                 { for rows.map(view_row) }
                             </div>
                         </section>
@@ -193,12 +194,12 @@ fn view_row(translation: &api::Translation) -> Html {
     let (label, flag) = super::locale_label(translation.language, "Default Language");
 
     html! {
-        <div class="translation-row">
-            <span class="translation-language">
+        <div class={class::TRANSLATION_ROW}>
+            <span class={class::TRANSLATION_LANGUAGE}>
                 if let Some(flag) = flag {
-                    <span class={classes!("item-inline", "flag", flag)} title={translation.language} />
+                    <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} title={translation.language} />
                 } else {
-                    <span class="item-inline">{translation.language}</span>
+                    <span class={class::ITEM_INLINE}>{translation.language}</span>
                 }
 
                 <span>{label}</span>

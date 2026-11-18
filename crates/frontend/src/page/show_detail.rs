@@ -517,7 +517,7 @@ impl Component for ShowDetail {
 
                             Some(html! {
                                 <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!(class::LOGO, id)} />
+                                    <span class={classes!(class::LOGO, class::logo(id))} />
                                 </a>
                             })
                         })}
@@ -2587,7 +2587,7 @@ fn view_numbering(n: &api::AltNumbering) -> Html {
 
     html! {
         <span class={classes!(class::NUMBERING_CHIP, sockel::class::NUMERIC)} {title}>
-            <span class={classes!(class::LOGO, n.system.clone())} aria-hidden="true" />
+            <span class={classes!(class::LOGO, class::logo(&n.system))} aria-hidden="true" />
             <span class="numbering-chip-code">{code}</span>
         </span>
     }
@@ -2602,7 +2602,7 @@ fn linked_label(l: &api::LinkedSeason) -> String {
 fn view_link_divider(link: &api::LinkedSeason) -> Html {
     html! {
         <div class={class::NUMBERING_DIVIDER} role="separator" aria-label={linked_label(link)}>
-            <span class={classes!(class::LOGO, link.system.clone())} title={api::xem_system_label(&link.system).to_owned()} />
+            <span class={classes!(class::LOGO, class::logo(&link.system))} title={api::xem_system_label(&link.system).to_owned()} />
             <span class={class::NUMBERING_DIVIDER_SEASON}>{format!("Season {}", link.season)}</span>
         </div>
     }

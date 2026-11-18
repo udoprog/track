@@ -428,7 +428,7 @@ impl PersonDetail {
 
                             Some(html! {
                                 <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!(class::LOGO, id)} />
+                                    <span class={classes!(class::LOGO, class::logo(id))} />
                                 </a>
                             })
                         })}

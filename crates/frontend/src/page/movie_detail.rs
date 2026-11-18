@@ -916,7 +916,7 @@ impl MovieDetail {
 
                             Some(html! {
                                 <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!(class::LOGO, id)} />
+                                    <span class={classes!(class::LOGO, class::logo(id))} />
                                 </a>
                             })
                         })}
@@ -961,7 +961,7 @@ impl MovieDetail {
 
                             if let Some(source) = release_source {
                                 <span class={class::ITEM_INLINE} title={source.as_label()}>
-                                    <span class={classes!(class::LOGO, source.as_id())} />
+                                    <span class={classes!(class::LOGO, class::logo(source.as_id()))} />
                                 </span>
                             }
                         } else {

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use web_sys::InputEvent;
 use yew::prelude::*;
 
+use crate::class;
 use crate::ui::Pager;
 
 use crate::flags;
@@ -202,28 +203,28 @@ impl Component for LanguageModal {
         });
 
         html! {
-            <Modal icon="language" title={props.title} on_close={link.callback(|_| Msg::Close)}>
-                <div class="sockel-cluster sockel-nowrap sockel-loose">
-                    <input autofocus={true} type="text" class={classes!(sockel::class::INPUT, "fill")} placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
+            <Modal icon={class::ICON_LANGUAGE} title={props.title} on_close={link.callback(|_| Msg::Close)}>
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                    <input autofocus={true} type="text" class={classes!(sockel::class::INPUT, class::FILL)} placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
                 </div>
 
-                <div class="table">
+                <div class={class::TABLE}>
                     // Quick picks: the most-used custom languages, shown right
                     // below "Default". Hidden while filtering to avoid duplicates,
                     // and entirely when `show_top` is disabled.
                     if self.filter.is_empty() {
                         if props.allow_default {
-                            <Button class="clickable sockel-cluster sockel-nowrap sockel-loose" title={format!("Use {}", props.placeholder)} pressed={Some(current.is_some_and(|c| c.is_default()))} onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
-                                <span class="fill">{props.placeholder}</span>
+                            <Button class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)} title={format!("Use {}", props.placeholder)} pressed={Some(current.is_some_and(|c| c.is_default()))} onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
+                                <span class={class::FILL}>{props.placeholder}</span>
 
                                 if let Some(current) = current &&  current.is_default() {
-                                    <span class="item-inline">
-                                        <span class="icon check" aria-hidden="true" />
+                                    <span class={class::ITEM_INLINE}>
+                                        <span class={classes!(class::ICON, class::ICON_CHECK)} aria-hidden="true" />
                                     </span>
                                 }
 
-                                <span class="item-inline">
-                                    <span class="icon icon-4x3 language" aria-hidden="true" />
+                                <span class={class::ITEM_INLINE}>
+                                    <span class={classes!(class::ICON, class::ICON_4X3, class::ICON_LANGUAGE)} aria-hidden="true" />
                                 </span>
                             </Button>
                         }
@@ -234,20 +235,20 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={format!("top-{locale}")} class={classes!("clickable", "sockel-cluster", "sockel-nowrap", "sockel-loose", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
-                                        <span class="fill">{name}</span>
+                                    <Button key={format!("top-{locale}")} class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, selected.then_some(class::ACTIVE))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                        <span class={class::FILL}>{name}</span>
 
                                         if selected {
-                                            <span class="item-inline">
-                                                <span class="icon check" aria-hidden="true" />
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={classes!(class::ICON, class::ICON_CHECK)} aria-hidden="true" />
                                             </span>
                                         }
 
                                         if let Some(flag) = flag {
-                                            <span class={classes!("item-inline", "flag", flag)} title={locale} />
+                                            <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} title={locale} />
                                         } else {
-                                            <span class="item-inline">
-                                                <span class="text-muted">{locale}</span>
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={class::TEXT_MUTED}>{locale}</span>
                                             </span>
                                         }
                                     </Button>
@@ -270,24 +271,24 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={locale.to_string()} class={classes!("clickable", "sockel-cluster", "sockel-nowrap", "sockel-loose", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
-                                        <span class="fill">{name}</span>
+                                    <Button key={locale.to_string()} class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, selected.then_some(class::ACTIVE))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                        <span class={class::FILL}>{name}</span>
 
                                         if selected {
-                                            <span class="item-inline">
-                                                <span class="icon check" aria-hidden="true" />
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={classes!(class::ICON, class::ICON_CHECK)} aria-hidden="true" />
                                             </span>
                                         }
 
-                                        <span class="item-inline">
+                                        <span class={class::ITEM_INLINE}>
                                             {locale}
                                         </span>
 
                                         if let Some(flag) = flag {
-                                            <span class={classes!("item-inline", "flag", flag)} title={locale} />
+                                            <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} title={locale} />
                                         } else {
-                                            <span class="item-inline">
-                                                <span class="text-muted">{locale}</span>
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={class::TEXT_MUTED}>{locale}</span>
                                             </span>
                                         }
                                     </Button>
@@ -296,7 +297,7 @@ impl Component for LanguageModal {
                     }
                 </div>
 
-                <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+                <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                     <Pager {page} pages={total_pages} on_page={link.callback(Msg::Page)} />
                 </div>
             </Modal>

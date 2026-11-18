@@ -11,6 +11,7 @@ use web_sys::{
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 
 use super::{Button, Modal, Variant};
@@ -27,6 +28,15 @@ const OVERRUN: u32 = 100;
 const FOLD_RUN: u32 = 10;
 /// How many range colours the map and list cycle through.
 const TONES: usize = 6;
+/// The class of each range colour, by tone.
+const TONE: [&str; TONES] = [
+    class::TONE_0,
+    class::TONE_1,
+    class::TONE_2,
+    class::TONE_3,
+    class::TONE_4,
+    class::TONE_5,
+];
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -679,19 +689,19 @@ impl Component for NumberingEditor {
         };
 
         html! {
-            <Modal icon="adjustments-horizontal" title="Episode numbering" class="numbering-modal" on_close={on_close.clone()}>
-                <div class="numbering-mode" role="group" aria-label="Numbering mode">
-                    <Button class={classes!("chip", (!self.manual).then_some("selected"))} label="Automatic" title="Automatic: same as TheTVDB" pressed={Some(!self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(false))} />
-                    <Button class={classes!("chip", self.manual.then_some("selected"))} label="Manual ranges" title="Manual ranges" pressed={Some(self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(true))} />
+            <Modal icon={class::ICON_ADJUSTMENTS_HORIZONTAL} title="Episode numbering" class={class::NUMBERING_MODAL} on_close={on_close.clone()}>
+                <div class={class::NUMBERING_MODE} role="group" aria-label="Numbering mode">
+                    <Button class={classes!(class::CHIP, (!self.manual).then_some(class::SELECTED))} label="Automatic" title="Automatic: same as TheTVDB" pressed={Some(!self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(false))} />
+                    <Button class={classes!(class::CHIP, self.manual.then_some(class::SELECTED))} label="Manual ranges" title="Manual ranges" pressed={Some(self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(true))} />
                 </div>
 
-                <div class="numbering-layout">
+                <div class={class::NUMBERING_LAYOUT}>
                     { self.view_status(ctx, &ranges, &bases, &suggest_title) }
                     { self.view_map(ctx, &ranges, &errors) }
 
                     if self.manual {
-                        <div class="numbering-side sockel-stack sockel-tight">
-                            <div class="numbering-ranges" ref={self.ranges.clone()}>
+                        <div class={classes!(class::NUMBERING_SIDE, sockel::class::STACK, sockel::class::TIGHT)}>
+                            <div class={class::NUMBERING_RANGES} ref={self.ranges.clone()}>
                                 for group in self.folds(&ranges, &errors) {
                                     if group.len() > 1 {
                                         { self.view_fold(ctx, group, &ranges, &errors) }
@@ -701,10 +711,10 @@ impl Component for NumberingEditor {
                                 }
                             </div>
 
-                            <div class="numbering-tools sockel-cluster sockel-tight">
-                                <Button icon="plus" label="Add range" title="Add range" onclick={link.callback(|_: MouseEvent| Msg::Add)} />
+                            <div class={classes!("numbering-tools", sockel::class::CLUSTER, sockel::class::TIGHT)}>
+                                <Button icon={class::ICON_PLUS} label="Add range" title="Add range" onclick={link.callback(|_: MouseEvent| Msg::Add)} />
                                 <Button
-                                    icon="sparkles"
+                                    icon={class::ICON_SPARKLES}
                                     label="Suggest from episode order"
                                     title={suggest_title}
                                     disabled={bases.is_empty()}
@@ -715,9 +725,9 @@ impl Component for NumberingEditor {
                     }
                 </div>
 
-                <div class="sockel-cluster sockel-tight sockel-end">
-                    <Button icon="x-mark" label="Cancel" title="Cancel" onclick={on_close.reform(|_: MouseEvent| ())} />
-                    <Button icon="check" label="Save" title="Save" variant={Variant::Primary} spin={self.saving} {disabled} onclick={link.callback(|_: MouseEvent| Msg::Save)} />
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT, sockel::class::END)}>
+                    <Button icon={class::ICON_X_MARK} label="Cancel" title="Cancel" onclick={on_close.reform(|_: MouseEvent| ())} />
+                    <Button icon={class::ICON_CHECK} label="Save" title="Save" variant={Variant::Primary} spin={self.saving} {disabled} onclick={link.callback(|_: MouseEvent| Msg::Save)} />
                 </div>
             </Modal>
         }
@@ -1038,7 +1048,7 @@ impl NumberingEditor {
         let first = |side: &str| {
             scroll
                 .query_selector(&format!(
-                    ".numbering-column[data-side='{side}'] .numbering-ep.selected"
+                    ".track-numbering-column[data-side='{side}'] .track-numbering-ep.track-selected"
                 ))
                 .ok()
                 .flatten()
@@ -1072,7 +1082,7 @@ impl NumberingEditor {
             .map_scroll
             .cast::<Element>()?
             .query_selector_all(&format!(
-                ".numbering-column[data-side='{side}'] [data-season='{season}']"
+                ".track-numbering-column[data-side='{side}'] [data-season='{season}']"
             ))
             .ok()?;
 
@@ -1102,7 +1112,7 @@ impl NumberingEditor {
         let scroll = self.map_scroll.cast::<Element>()?;
         let top = scroll.get_bounding_client_rect().top();
         let rows = scroll
-            .query_selector_all(".numbering-column[data-side='tmdb'] [data-season]")
+            .query_selector_all(".track-numbering-column[data-side='tmdb'] [data-season]")
             .ok()?;
 
         let row = (0..rows.length())
@@ -1162,11 +1172,11 @@ impl NumberingEditor {
 
     /// Scroll the selected range's row into view in the list.
     fn reveal_in_list(&self) {
-        let Some(row) = self
-            .ranges
-            .cast::<Element>()
-            .and_then(|e| e.query_selector(".numbering-range.selected").ok().flatten())
-        else {
+        let Some(row) = self.ranges.cast::<Element>().and_then(|e| {
+            e.query_selector(".track-numbering-range.track-selected")
+                .ok()
+                .flatten()
+        }) else {
             return;
         };
 
@@ -1673,7 +1683,7 @@ impl NumberingEditor {
             .into_iter()
             .map(|(system, s, episodes)| {
                 html! {
-                    <p class="hint numbering-unreached">
+                    <p class={classes!(class::HINT, "numbering-unreached")}>
                         {format!("No TMDB episode maps to {} S{s} {}.", api::xem_system_label(system), runs(&episodes))}
                     </p>
                 }
@@ -1683,7 +1693,7 @@ impl NumberingEditor {
         let asking = self.view_bases(ctx, bases);
 
         let toggle = html! {
-            <button type="button" class="link-button numbering-details-toggle" aria-expanded={self.details.to_string()} onclick={link.callback(|_: MouseEvent| Msg::ToggleDetails)}>
+            <button type="button" class={classes!(class::LINK_BUTTON, "numbering-details-toggle")} aria-expanded={self.details.to_string()} onclick={link.callback(|_: MouseEvent| Msg::ToggleDetails)}>
                 { if self.details { "Hide details" } else { "Show details" } }
             </button>
         };
@@ -1702,7 +1712,7 @@ impl NumberingEditor {
                         .collect::<Vec<_>>();
 
                     (!missing.is_empty()).then(|| html! {
-                        <p class="numbering-missing">
+                        <p class={class::NUMBERING_MISSING}>
                             {format!("XEM has no {} S{} {}, so TMDB S{} {} get no other numbers.", api::xem_system_label(&r.system), r.target_season, runs(&missing), r.season, runs(&episodes))}
                         </p>
                     })
@@ -1710,14 +1720,14 @@ impl NumberingEditor {
                 .collect::<Html>();
 
             return html! {
-                <div class="numbering-status">
+                <div class={class::NUMBERING_STATUS}>
                     if mismatches.is_empty() {
-                        <p class="hint">{"Automatic numbering reads the show's episode codes as TheTVDB's, and its seasons line up."}</p>
+                        <p class={class::HINT}>{"Automatic numbering reads the show's episode codes as TheTVDB's, and its seasons line up."}</p>
                     } else {
-                        <p class="hint">{"Automatic numbering reads the show's episode codes as TheTVDB's."}</p>
+                        <p class={class::HINT}>{"Automatic numbering reads the show's episode codes as TheTVDB's."}</p>
 
-                        <div class="numbering-warning numbering-summary" role="alert">
-                            <span class="icon exclamation-triangle" aria-hidden="true" />
+                        <div class={classes!(class::NUMBERING_WARNING, "numbering-summary")} role="alert">
+                            <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                             <span>
                                 { match mismatches.len() {
                                     1 => "1 season differs from TheTVDB.".to_owned(),
@@ -1731,16 +1741,16 @@ impl NumberingEditor {
                         if self.asking {
                             {asking}
                         } else {
-                            <div class="numbering-tools sockel-cluster sockel-tight">
-                                <Button icon="sparkles" label="Suggest from episode order" title={suggest_title.to_owned()} disabled={bases.is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
+                            <div class={classes!("numbering-tools", sockel::class::CLUSTER, sockel::class::TIGHT)}>
+                                <Button icon={class::ICON_SPARKLES} label="Suggest from episode order" title={suggest_title.to_owned()} disabled={bases.is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
                             </div>
                         }
 
                         if self.details {
-                            <div class="numbering-details">
+                            <div class={class::NUMBERING_DETAILS}>
                                 for m in &mismatches {
-                                    <div class="numbering-warning">
-                                        <span class="icon exclamation-triangle" aria-hidden="true" />
+                                    <div class={class::NUMBERING_WARNING}>
+                                        <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                                         <span>{mismatch_message(m)}</span>
                                     </div>
                                 }
@@ -1785,17 +1795,17 @@ impl NumberingEditor {
         };
 
         html! {
-            <div class="numbering-status">
+            <div class={class::NUMBERING_STATUS}>
                 {asking}
 
                 if let Some(system) = &self.suggested {
-                    <p class="numbering-note">
-                        <span class="icon sparkles" aria-hidden="true" />
+                    <p class={class::NUMBERING_NOTE}>
+                        <span class={classes!(class::ICON, class::ICON_SPARKLES)} aria-hidden="true" />
                         {format!("Suggested from {}'s episode order. Nothing is saved until you save.", api::xem_system_label(system))}
                     </p>
                 }
 
-                <p class="hint">
+                <p class={class::HINT}>
                     <span class="numbering-coverage">{format!("{mapped} of {regular} regular TMDB episodes are mapped.")}</span>
 
                     if has_details {
@@ -1805,16 +1815,16 @@ impl NumberingEditor {
                 </p>
 
                 if self.details && has_details {
-                    <div class="numbering-details">
+                    <div class={class::NUMBERING_DETAILS}>
                         for (s, episodes) in &unmapped {
-                            <p class="hint numbering-unmapped">{format!("Not mapped: S{s} {}.", runs(episodes))}</p>
+                            <p class={classes!(class::HINT, "numbering-unmapped")}>{format!("Not mapped: S{s} {}.", runs(episodes))}</p>
                         }
 
                         {unreached}
                     </div>
                 }
 
-                <p class="hint numbering-hint">{hint}</p>
+                <p class={classes!(class::HINT, "numbering-hint")}>{hint}</p>
             </div>
         }
     }
@@ -1848,25 +1858,25 @@ impl NumberingEditor {
             };
 
             html! {
-                <Button class="numbering-basis-option" title={format!("Suggest from {}", api::xem_system_label(&system))} onclick={link.callback(move |_: MouseEvent| Msg::SuggestFrom(system.clone()))}>
+                <Button class={class::NUMBERING_BASIS_OPTION} title={format!("Suggest from {}", api::xem_system_label(&system))} onclick={link.callback(move |_: MouseEvent| Msg::SuggestFrom(system.clone()))}>
                     for s in group {
-                        <span class={classes!("logo", s.clone())} aria-hidden="true" />
+                        <span class={classes!(class::LOGO, class::logo(s))} aria-hidden="true" />
                     }
-                    <span class="numbering-basis-name">{names}</span>
-                    <span class="text-muted">{format!("{episodes} episodes in {ranges}")}</span>
+                    <span class={class::NUMBERING_BASIS_NAME}>{names}</span>
+                    <span class={class::TEXT_MUTED}>{format!("{episodes} episodes in {ranges}")}</span>
                 </Button>
             }
         });
 
         html! {
-            <div class="numbering-basis" role="group" aria-label="Suggest from">
-                <p class="hint">{"These numberings put the episodes in different orders. Which should the suggestion follow?"}</p>
+            <div class={class::NUMBERING_BASIS} role="group" aria-label="Suggest from">
+                <p class={class::HINT}>{"These numberings put the episodes in different orders. Which should the suggestion follow?"}</p>
 
                 for option in options {
                     {option}
                 }
 
-                <Button class="numbering-basis-cancel" icon="x-mark" label="Cancel" title="Cancel suggestion" onclick={link.callback(|_: MouseEvent| Msg::CancelSuggest)} />
+                <Button class={class::NUMBERING_BASIS_CANCEL} icon={class::ICON_X_MARK} label="Cancel" title="Cancel suggestion" onclick={link.callback(|_: MouseEvent| Msg::CancelSuggest)} />
             </div>
         }
     }
@@ -1880,7 +1890,7 @@ impl NumberingEditor {
         let link = ctx.link();
 
         let Some(data) = &self.data else {
-            return html! { <div class="numbering-map-pane sockel-stack sockel-tight" /> };
+            return html! { <div class={classes!(class::NUMBERING_MAP_PANE, sockel::class::STACK, sockel::class::TIGHT)} /> };
         };
 
         let drawn = self.drawn(ranges);
@@ -2008,10 +2018,10 @@ impl NumberingEditor {
             });
 
             html! {
-                <span class="numbering-map-source" title={label.clone()}>
-                    <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
-                    <span class="numbering-map-label sockel-visually-hidden">{label.clone()}</span>
-                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, "numbering-map-in-view", sockel::class::NUMERIC)} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
+                <span class={class::NUMBERING_MAP_SOURCE} title={label.clone()}>
+                    <span class={classes!(class::LOGO, class::logo(c.side.logo()))} aria-hidden="true" />
+                    <span class={classes!("numbering-map-label", sockel::class::VISUALLY_HIDDEN)}>{label.clone()}</span>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, class::NUMBERING_MAP_IN_VIEW, sockel::class::NUMERIC)} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
                         if current.is_none() {
                             <option value="" selected=true hidden=true>{"–"}</option>
                         }
@@ -2031,14 +2041,14 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-map-pane sockel-stack sockel-tight">
-                <div class="numbering-map-head" style={template.clone()} ref={self.map_head.clone()}>
+            <div class={classes!(class::NUMBERING_MAP_PANE, sockel::class::STACK, sockel::class::TIGHT)}>
+                <div class={class::NUMBERING_MAP_HEAD} style={template.clone()} ref={self.map_head.clone()}>
                     for head in heads {
                         {head}
                     }
                 </div>
 
-                <svg class="numbering-defs" aria-hidden="true">
+                <svg class={class::NUMBERING_DEFS} aria-hidden="true">
                     <linearGradient id="numbering-fade-gradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0" stop-color="white" />
                         <stop offset="1" stop-color="white" stop-opacity="0" />
@@ -2048,8 +2058,8 @@ impl NumberingEditor {
                     </mask>
                 </svg>
 
-                <div class="numbering-map-scroll" ref={self.map_scroll.clone()} {onscroll}>
-                    <div class="numbering-map" style={format!("{template}; height: {height}px")}>
+                <div class={class::NUMBERING_MAP_SCROLL} ref={self.map_scroll.clone()} {onscroll}>
+                    <div class={class::NUMBERING_MAP} style={format!("{template}; height: {height}px")}>
                         for part in map {
                             {part}
                         }
@@ -2057,21 +2067,21 @@ impl NumberingEditor {
                 </div>
 
                 if has_specials || folded > 0 || foldable > folded {
-                    <div class="numbering-map-foot">
+                    <div class={class::NUMBERING_MAP_FOOT}>
                         if has_specials {
-                            <button type="button" class="link-button numbering-specials" onclick={link.callback(|_: MouseEvent| Msg::ToggleSpecials)}>
+                            <button type="button" class={classes!(class::LINK_BUTTON, "numbering-specials")} onclick={link.callback(|_: MouseEvent| Msg::ToggleSpecials)}>
                                 { if self.specials { "Hide specials" } else { "Show specials" } }
                             </button>
                         }
 
                         if folded > 0 {
-                            <button type="button" class="link-button numbering-unfold-all" title="Show every episode of the map" onclick={link.callback(|_: MouseEvent| Msg::FoldAll(false))}>
+                            <button type="button" class={classes!(class::LINK_BUTTON, "numbering-unfold-all")} title="Show every episode of the map" onclick={link.callback(|_: MouseEvent| Msg::FoldAll(false))}>
                                 {"Unfold all"}
                             </button>
                         }
 
                         if foldable > folded {
-                            <button type="button" class="link-button numbering-fold-all" title="Fold long runs of episodes that look alike" onclick={link.callback(|_: MouseEvent| Msg::FoldAll(true))}>
+                            <button type="button" class={classes!(class::LINK_BUTTON, "numbering-fold-all")} title="Fold long runs of episodes that look alike" onclick={link.callback(|_: MouseEvent| Msg::FoldAll(true))}>
                                 {"Fold long runs"}
                             </button>
                         }
@@ -2144,12 +2154,12 @@ impl NumberingEditor {
                 let d = band(y1, y2, y3, y4);
 
                 let class = classes!(
-                    "numbering-band",
-                    (!self.manual).then_some("static"),
-                    format!("tone-{}", i % TONES),
-                    (self.manual && self.selected == Some(i)).then_some("selected"),
-                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
-                    missing.then_some("missing"),
+                    class::NUMBERING_BAND,
+                    (!self.manual).then_some(class::STATIC),
+                    TONE[i % TONES],
+                    (self.manual && self.selected == Some(i)).then_some(class::SELECTED),
+                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some(class::INVALID),
+                    missing.then_some(class::MISSING),
                 );
 
                 let onclick = self
@@ -2181,12 +2191,12 @@ impl NumberingEditor {
                 let d = band(ya.0 - 1.0, ya.1 - 1.0, yb.0 - 1.0, yb.1 - 1.0);
 
                 let class = classes!(
-                    "numbering-band",
-                    "open-end",
-                    (!self.manual).then_some("static"),
-                    format!("tone-{}", i % TONES),
-                    (self.manual && self.selected == Some(i)).then_some("selected"),
-                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
+                    class::NUMBERING_BAND,
+                    class::OPEN_END,
+                    (!self.manual).then_some(class::STATIC),
+                    TONE[i % TONES],
+                    (self.manual && self.selected == Some(i)).then_some(class::SELECTED),
+                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some(class::INVALID),
                 );
 
                 let onclick = link.callback(move |_: MouseEvent| Msg::SelectBand(i));
@@ -2210,7 +2220,7 @@ impl NumberingEditor {
         }
 
         html! {
-            <svg class="numbering-bands" viewBox={format!("0 0 100 {}", height.max(1))} preserveAspectRatio="none" style={format!("height: {height}px")} aria-hidden="true">
+            <svg class={class::NUMBERING_BANDS} viewBox={format!("0 0 100 {}", height.max(1))} preserveAspectRatio="none" style={format!("height: {height}px")} aria-hidden="true">
                 for band in bands {
                     {band}
                 }
@@ -2244,11 +2254,11 @@ impl NumberingEditor {
                     .filter(|_| owners.is_empty());
 
                 let state = match owners {
-                    [] if let Some(i) = tail => format!("tone-{} open-end", i % TONES),
-                    [] if tmdb && known && season > 0 => "unmapped".to_owned(),
+                    [] if let Some(i) = tail => format!("{} {}", TONE[i % TONES], class::OPEN_END),
+                    [] if tmdb && known && season > 0 => class::UNMAPPED.to_owned(),
                     [] => String::new(),
-                    [(i, _)] => format!("tone-{}", i % TONES),
-                    _ => "overlap".to_owned(),
+                    [(i, _)] => TONE[i % TONES].to_owned(),
+                    _ => class::OVERLAP.to_owned(),
                 };
 
                 let code = format!("{label} S{season} E{e}");
@@ -2281,23 +2291,24 @@ impl NumberingEditor {
                 let mine = |i: &usize| tail == Some(*i) || owners.iter().any(|(o, _)| o == i);
 
                 let flags = [
-                    (!tmdb && known && owners.is_empty() && tail.is_none()).then_some("untargeted"),
+                    (!tmdb && known && owners.is_empty() && tail.is_none())
+                        .then_some(class::UNTARGETED),
                     (!known && tail.is_none()).then_some(if tmdb || owners.is_empty() {
-                        "future"
+                        class::FUTURE
                     } else {
-                        "missing"
+                        class::MISSING
                     }),
                     self.selected
                         .filter(|i| self.manual && mine(i))
-                        .map(|_| "selected"),
+                        .map(|_| class::SELECTED),
                     errors
                         .iter()
                         .any(|(x, _)| self.manual && mine(x))
-                        .then_some("invalid"),
+                        .then_some(class::INVALID),
                     self.anchor
                         .as_ref()
                         .is_some_and(|(a, s, x)| a == side && (*s, *x) == (season, e))
-                        .then_some("anchor"),
+                        .then_some(class::ANCHOR),
                 ];
 
                 let classes = (!state.is_empty())
@@ -2359,10 +2370,10 @@ impl NumberingEditor {
                     let onclick = link.callback(move |_: MouseEvent| Msg::Unfold(pick.clone(), season, first, last));
 
                     rows.push(html! {
-                        <button type="button" class={classes!("numbering-ep", "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
-                            <span class="sockel-numeric">
+                        <button type="button" class={classes!(class::NUMBERING_EP, class::NUMBERING_FOLD_ROW, cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
+                            <span class={sockel::class::NUMERIC}>
                                 <span>{format!("E{first}–E{last}")}</span>
-                                <span class="numbering-fold-count">{format!("· {n}")}</span>
+                                <span class={class::NUMBERING_FOLD_COUNT}>{format!("· {n}")}</span>
                             </span>
                         </button>
                     });
@@ -2376,8 +2387,8 @@ impl NumberingEditor {
                 let text = if cell.tail { format!("E{e}…") } else { format!("E{e}") };
 
                 rows.push(html! {
-                    <button type="button" class={classes!("numbering-ep", cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
-                        <span class="sockel-numeric">{text}</span>
+                    <button type="button" class={classes!(class::NUMBERING_EP, cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
+                        <span class={sockel::class::NUMERIC}>{text}</span>
                     </button>
                 });
 
@@ -2386,8 +2397,8 @@ impl NumberingEditor {
 
             html! {
                 <>
-                    <div class="numbering-map-season sockel-truncate" title={format!("{label} {name}: {} episodes", s.known)}>
-                        {heading}<span class="text-muted">{format!(" · {}", s.known)}</span>
+                    <div class={classes!(class::NUMBERING_MAP_SEASON, sockel::class::TRUNCATE)} title={format!("{label} {name}: {} episodes", s.known)}>
+                        {heading}<span class={class::TEXT_MUTED}>{format!(" · {}", s.known)}</span>
                     </div>
                     for row in rows {
                         {row}
@@ -2397,7 +2408,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-column" data-side={side.logo().to_owned()}>
+            <div class={class::NUMBERING_COLUMN} data-side={side.logo().to_owned()}>
                 for season in seasons {
                     {season}
                 }
@@ -2439,9 +2450,9 @@ impl NumberingEditor {
         let toggle = group.clone();
 
         html! {
-            <div class={classes!("numbering-fold", open.then_some("open"))} role="group" aria-label={label.clone()}>
-                <button type="button" class="numbering-fold-summary" {title} aria-expanded={open.to_string()} onclick={ctx.link().callback(move |_: MouseEvent| Msg::SetFold(toggle.clone(), !open))}>
-                    <span class={classes!("icon", if open { "chevron-down" } else { "chevron-right" })} aria-hidden="true" />
+            <div class={classes!(class::NUMBERING_FOLD, open.then_some(class::OPEN))} role="group" aria-label={label.clone()}>
+                <button type="button" class={class::NUMBERING_FOLD_SUMMARY} {title} aria-expanded={open.to_string()} onclick={ctx.link().callback(move |_: MouseEvent| Msg::SetFold(toggle.clone(), !open))}>
+                    <span class={classes!(class::ICON, if open { class::ICON_CHEVRON_DOWN } else { class::ICON_CHEVRON_RIGHT })} aria-hidden="true" />
                     <span class="numbering-fold-label">{label}</span>
                 </button>
 
@@ -2476,10 +2487,10 @@ impl NumberingEditor {
         // in columns from row to row.
         let cells = |season: u32, first: u32, last: Option<u32>| {
             html! {
-                <span class="numbering-span sockel-numeric">
-                    <span class="numbering-season">{format!("S{season}")}</span>{" "}
-                    <span class="numbering-first">{format!("E{first}")}</span>
-                    <span class="numbering-last">{last.map(|l| format!("–E{l}")).unwrap_or_else(|| "–".to_owned())}</span>
+                <span class={classes!(class::NUMBERING_SPAN, sockel::class::NUMERIC)}>
+                    <span class={class::NUMBERING_SEASON}>{format!("S{season}")}</span>{" "}
+                    <span class={class::NUMBERING_FIRST}>{format!("E{first}")}</span>
+                    <span class={class::NUMBERING_LAST}>{last.map(|l| format!("–E{l}")).unwrap_or_else(|| "–".to_owned())}</span>
                 </span>
             }
         };
@@ -2488,12 +2499,12 @@ impl NumberingEditor {
             Some(r) => html! {
                 <>
                     { cells(r.season, r.first, r.last) }
-                    <span class="icon arrows-right-left" aria-hidden="true" />
-                    <span class={classes!("logo", r.system.clone())} title={api::xem_system_label(&r.system).to_owned()} />
+                    <span class={classes!(class::ICON, class::ICON_ARROWS_RIGHT_LEFT)} aria-hidden="true" />
+                    <span class={classes!(class::LOGO, class::logo(&r.system))} title={api::xem_system_label(&r.system).to_owned()} />
                     { cells(r.target_season, r.target_first, r.target_last()) }
                 </>
             },
-            None => html! { <span class="numbering-incomplete">{"Incomplete range"}</span> },
+            None => html! { <span class={class::NUMBERING_INCOMPLETE}>{"Incomplete range"}</span> },
         };
 
         let missing = range.map(|r| self.missing_targets(r)).unwrap_or_default();
@@ -2502,13 +2513,13 @@ impl NumberingEditor {
             link.callback(move |_: MouseEvent| Msg::Select((!selected).then_some(index)));
 
         html! {
-            <div class={classes!("numbering-range", selected.then_some("selected"), (!messages.is_empty()).then_some("invalid"))} role="group" aria-label={format!("Range {n}")}>
-                <div class="numbering-range-head">
-                    <button type="button" class="numbering-range-summary" title={format!("Edit range {n}")} aria-expanded={selected.to_string()} onclick={on_select}>
-                        <span class={classes!("numbering-swatch", format!("tone-{}", index % TONES))} aria-hidden="true" />
+            <div class={classes!(class::NUMBERING_RANGE, selected.then_some(class::SELECTED), (!messages.is_empty()).then_some(class::INVALID))} role="group" aria-label={format!("Range {n}")}>
+                <div class={class::NUMBERING_RANGE_HEAD}>
+                    <button type="button" class={class::NUMBERING_RANGE_SUMMARY} title={format!("Edit range {n}")} aria-expanded={selected.to_string()} onclick={on_select}>
+                        <span class={classes!(class::NUMBERING_SWATCH, TONE[index % TONES])} aria-hidden="true" />
                         {summary}
                     </button>
-                    <Button class="numbering-remove" icon="trash" title={format!("Remove range {n}")} onclick={link.callback(move |_: MouseEvent| Msg::Remove(index))} />
+                    <Button class="numbering-remove" icon={class::ICON_TRASH} title={format!("Remove range {n}")} onclick={link.callback(move |_: MouseEvent| Msg::Remove(index))} />
                 </div>
 
                 if selected {
@@ -2516,7 +2527,7 @@ impl NumberingEditor {
                 }
 
                 if !messages.is_empty() {
-                    <div class="numbering-errors" role="alert">
+                    <div class={class::NUMBERING_ERRORS} role="alert">
                         for m in messages {
                             <span>{m}</span>
                         }
@@ -2524,7 +2535,7 @@ impl NumberingEditor {
                 }
 
                 if let Some(r) = range.filter(|_| !missing.is_empty()) {
-                    <div class="numbering-missing">
+                    <div class={class::NUMBERING_MISSING}>
                         {format!("XEM has no {} S{} {}.", api::xem_system_label(&r.system), r.target_season, runs(&missing))}
                     </div>
                 }
@@ -2544,7 +2555,7 @@ impl NumberingEditor {
             });
 
             html! {
-                <input class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC, "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
+                <input class={classes!(sockel::class::INPUT, class::INPUT_NUMBER, sockel::class::NUMERIC, class::NUMBERING_NUMBER)} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
             }
         };
 
@@ -2557,22 +2568,22 @@ impl NumberingEditor {
         let open = row.open;
 
         html! {
-            <div class="sockel-cluster sockel-tight">
-                <div class="numbering-source">
-                    <span class="logo tmdb" title="TMDB" />
-                    <span class="numbering-letter">{"S"}</span>
+            <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT)}>
+                <div class={class::NUMBERING_SOURCE}>
+                    <span class={classes!(class::LOGO, class::TMDB)} title="TMDB" />
+                    <span class={class::NUMBERING_LETTER}>{"S"}</span>
                     { input(Field::Season, &row.season, format!("Range {n} season")) }
-                    <span class="numbering-letter">{"E"}</span>
+                    <span class={class::NUMBERING_LETTER}>{"E"}</span>
                     { input(Field::First, &row.first, format!("Range {n} first episode")) }
-                    <span class="numbering-letter">{"–"}</span>
+                    <span class={class::NUMBERING_LETTER}>{"–"}</span>
                     if row.open {
-                        <input class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC, "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
+                        <input class={classes!(sockel::class::INPUT, class::INPUT_NUMBER, sockel::class::NUMERIC, class::NUMBERING_NUMBER)} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
                     } else {
                         { input(Field::Last, &row.last, format!("Range {n} last episode")) }
                     }
                     <Button
-                        class={classes!("chip", "numbering-open", row.open.then_some("selected"))}
-                        icon="arrow-long-down"
+                        class={classes!(class::CHIP, "numbering-open", row.open.then_some(class::SELECTED))}
+                        icon={class::ICON_ARROW_LONG_DOWN}
                         label="Open end"
                         title={format!("Range {n} runs on through later episodes of the season")}
                         pressed={Some(row.open)}
@@ -2580,7 +2591,7 @@ impl NumberingEditor {
                     />
                 </div>
 
-                <div class="numbering-target">
+                <div class={class::NUMBERING_TARGET}>
                     <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title={format!("Range {n} numbering")} onchange={on_system}>
                         if !known {
                             <option value={row.system.clone()} selected=true>{row.system.clone()}</option>
@@ -2590,13 +2601,13 @@ impl NumberingEditor {
                             <option value={name} selected={row.system == name}>{label}</option>
                         }
                     </select>
-                    <span class="numbering-letter">{"S"}</span>
+                    <span class={class::NUMBERING_LETTER}>{"S"}</span>
                     { input(Field::TargetSeason, &row.target_season, format!("Range {n} target season")) }
-                    <span class="numbering-letter">{"E"}</span>
+                    <span class={class::NUMBERING_LETTER}>{"E"}</span>
                     { input(Field::TargetFirst, &row.target_first, format!("Range {n} target first episode")) }
                 </div>
 
-                <Button class="sockel-push-end" icon="check" label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
+                <Button class={sockel::class::PUSH_END} icon={class::ICON_CHECK} label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
             </div>
         }
     }

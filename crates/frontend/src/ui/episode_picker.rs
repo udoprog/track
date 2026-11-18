@@ -7,6 +7,7 @@ use musli_web::web03::prelude::*;
 use musli_web::yew023::ContextExt;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext as _, Error, Message};
 use crate::ui::{Button, FormRow, Variant};
 
@@ -118,7 +119,7 @@ impl Component for EpisodePicker {
         let can_confirm = self.season.is_some() && self.episode.is_some();
 
         html! {
-            <div class="episode-picker sockel-stack sockel-loose">
+            <div class={classes!("episode-picker", sockel::class::STACK, sockel::class::LOOSE)}>
                 <div class={sockel::form_rows(false)}>
                     <FormRow label="Season">
                         <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Season" onchange={on_season_change}>
@@ -151,10 +152,10 @@ impl Component for EpisodePicker {
                     </FormRow>
                 </div>
 
-                <div class="sockel-cluster sockel-nowrap sockel-loose sockel-end">
-                    <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::END)}>
+                    <Button icon={class::ICON_X_MARK} label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
 
-                    <Button icon="check" label="Move" title="Move the watch here" variant={Variant::Primary} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
+                    <Button icon={class::ICON_CHECK} label="Move" title="Move the watch here" variant={Variant::Primary} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
                 </div>
             </div>
         }

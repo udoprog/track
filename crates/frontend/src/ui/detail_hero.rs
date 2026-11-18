@@ -1,3 +1,4 @@
+use crate::class;
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -16,16 +17,16 @@ pub(crate) fn DetailHero(props: &Props) -> Html {
     let backdrop = props.backdrop.as_ref().map(|image| image.proxy_url());
 
     html! {
-        <header class={classes!("detail-hero", "sockel-cluster", "sockel-nowrap", "sockel-loose", "sockel-bottom", backdrop.is_some().then_some("has-backdrop"))}>
+        <header class={classes!(class::DETAIL_HERO, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::BOTTOM, backdrop.is_some().then_some(class::HAS_BACKDROP))}>
             if let Some(url) = backdrop {
-                <div class="detail-hero-image" style={format!("background-image: url('{url}')")} />
+                <div class={class::DETAIL_HERO_IMAGE} style={format!("background-image: url('{url}')")} />
             }
 
-            <div class="detail-hero-text sockel-stack sockel-snug">
-                <h1 class="detail-title">{props.title.clone()}</h1>
+            <div class={classes!(class::DETAIL_HERO_TEXT, sockel::class::STACK, sockel::class::SNUG)}>
+                <h1 class={class::DETAIL_TITLE}>{props.title.clone()}</h1>
 
                 if let Some(meta) = &props.meta {
-                    <span class="detail-meta">{meta.clone()}</span>
+                    <span class={class::DETAIL_META}>{meta.clone()}</span>
                 }
             </div>
         </header>

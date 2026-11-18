@@ -2,6 +2,7 @@ use web_sys::MouseEvent;
 use yew::prelude::*;
 
 use crate::active_tasks::{ActiveTasks, SyncTarget};
+use crate::class;
 use crate::router::{QueueQuery, Route};
 use crate::ui::Button;
 
@@ -28,7 +29,7 @@ pub(crate) fn SyncButton(props: &Props) -> Html {
 
     let Some(task) = tasks.task(props.target) else {
         return html! {
-            <Button icon="arrow-path" spin={props.requested} title="Sync now" text={props.text.clone()} label={props.label.clone()} onclick={props.onclick.clone()} />
+            <Button icon={class::ICON_ARROW_PATH} spin={props.requested} title="Sync now" text={props.text.clone()} label={props.label.clone()} onclick={props.onclick.clone()} />
         };
     };
 
@@ -40,6 +41,6 @@ pub(crate) fn SyncButton(props: &Props) -> Html {
     let syncing = AttrValue::Static("Syncing");
 
     html! {
-        <Button {to} icon="arrow-path" spin=true title="Syncing, show in queue" label={props.label.is_some().then(|| syncing.clone())} text={props.text.is_some().then_some(syncing)} />
+        <Button {to} icon={class::ICON_ARROW_PATH} spin=true title="Syncing, show in queue" label={props.label.is_some().then(|| syncing.clone())} text={props.text.is_some().then_some(syncing)} />
     }
 }

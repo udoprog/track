@@ -1,5 +1,6 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::help;
 
 /// Opens the help modal, provided by the app through context.
@@ -45,8 +46,8 @@ pub(crate) fn Help(props: &Props) -> Html {
     });
 
     html! {
-        <sockel::IconButton class="help-mark" {title} haspopup=true {onclick}>
-            <span class="icon question-mark-circle" aria-hidden="true" />
+        <sockel::IconButton class={class::HELP_MARK} {title} haspopup=true {onclick}>
+            <span class={classes!(class::ICON, class::ICON_QUESTION_MARK_CIRCLE)} aria-hidden="true" />
         </sockel::IconButton>
     }
 }

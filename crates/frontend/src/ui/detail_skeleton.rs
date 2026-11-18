@@ -1,3 +1,4 @@
+use crate::class;
 use yew::prelude::*;
 
 use sockel::{Ratio, Skeleton, SkeletonShape};
@@ -9,21 +10,21 @@ use sockel::{Ratio, Skeleton, SkeletonShape};
 pub(crate) fn DetailSkeleton() -> Html {
     html! {
         <>
-            <div class="sockel-stack">
+            <div class={sockel::class::STACK}>
                 <Skeleton shape={SkeletonShape::Line} width="14rem" />
 
-                <div class="sockel-cluster sockel-nowrap sockel-loose">
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                     <Skeleton width="6rem" />
                     <Skeleton width="6rem" />
                 </div>
             </div>
 
-            <div class="detail-layout">
-                <div class="detail-sidebar sockel-stack sockel-loose">
-                    <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class="desktop-only" />
+            <div class={class::DETAIL_LAYOUT}>
+                <div class={classes!(class::DETAIL_SIDEBAR, sockel::class::STACK, sockel::class::LOOSE)}>
+                    <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class={class::DESKTOP_ONLY} />
                 </div>
 
-                <div class="sockel-stack sockel-loose" data-testid="detail-content">
+                <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)} data-testid="detail-content">
                     <Skeleton shape={SkeletonShape::Line} />
                     <Skeleton shape={SkeletonShape::Line} width="90%" />
                     <Skeleton shape={SkeletonShape::Line} width="80%" />

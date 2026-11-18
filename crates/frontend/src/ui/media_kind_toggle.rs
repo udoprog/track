@@ -1,5 +1,6 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::router::MediaSelection;
 use crate::ui::Button;
 
@@ -28,8 +29,8 @@ pub(crate) fn MediaKindToggle(props: &Props) -> Html {
 
     html! {
         <>
-            <Button icon="tv" label="Shows" title={if selection.shows { "Showing series" } else { "Hiding series" }} class={classes!("chip", selection.shows.then_some("selected"))} pressed={Some(selection.shows)} onclick={on_shows} />
-            <Button icon="film" label="Movies" title={if selection.movies { "Showing movies" } else { "Hiding movies" }} class={classes!("chip", selection.movies.then_some("selected"))} pressed={Some(selection.movies)} onclick={on_movies} />
+            <Button icon={class::ICON_TV} label="Shows" title={if selection.shows { "Showing series" } else { "Hiding series" }} class={classes!(class::CHIP, selection.shows.then_some(class::SELECTED))} pressed={Some(selection.shows)} onclick={on_shows} />
+            <Button icon={class::ICON_FILM} label="Movies" title={if selection.movies { "Showing movies" } else { "Hiding movies" }} class={classes!(class::CHIP, selection.movies.then_some(class::SELECTED))} pressed={Some(selection.movies)} onclick={on_movies} />
         </>
     }
 }

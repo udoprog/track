@@ -17,6 +17,7 @@ use yew::html::onclick;
 use yew::prelude::*;
 use yew::virtual_dom::{VList, VNode, VTag, VText};
 
+use crate::class;
 use crate::router::MediaSelection;
 use crate::ui::{Button, MarkTimeMenu, MediaKindToggle, Tracked};
 
@@ -33,12 +34,12 @@ pub(crate) fn demo(name: &str) -> Option<Html> {
             </>
         },
         "media-kind" => html! {
-            <span class="chips sockel-cluster">
+            <span class={classes!(class::CHIPS, sockel::class::CLUSTER)}>
                 <MediaKindToggle selection={MediaSelection { shows: true, movies: false }} on_change={Callback::noop()} />
             </span>
         },
         "mark-watched" => html! {
-            <MarkTimeMenu quick={true} variant="primary" icon="check" title="Mark watched" prompt="When did you watch this episode?" on_confirm={Callback::noop()} />
+            <MarkTimeMenu quick={true} variant="primary" icon={class::ICON_CHECK} title="Mark watched" prompt="When did you watch this episode?" on_confirm={Callback::noop()} />
         },
         _ => return None,
     };
@@ -117,7 +118,7 @@ impl Builder<'_> {
             }
 
             let mut mark = VTag::new("mark");
-            mark.add_attribute("class", "help-hit");
+            mark.add_attribute("class", class::HELP_HIT);
             mark.add_child(VNode::VText(VText::new(text[start..end].to_owned())));
 
             if !self.marked {
@@ -154,7 +155,10 @@ impl Builder<'_> {
             Frame::Image { dest, alt } => {
                 if let Some(name) = dest.strip_prefix("icon:") {
                     let mut icon = VTag::new("span");
-                    icon.add_attribute("class", format!("icon {name} help-icon"));
+                    icon.add_attribute(
+                        "class",
+                        format!("{} track-icon-{name} {}", class::ICON, class::HELP_ICON),
+                    );
                     icon.add_attribute("role", "img");
                     icon.add_attribute("aria-label", alt);
                     self.push(VNode::VTag(Rc::new(icon)));
@@ -175,7 +179,10 @@ impl Builder<'_> {
                     // is marked instead.
                     if let (Some(hit), VNode::VTag(tag)) = (hit, &mut node) {
                         let tag = Rc::make_mut(tag);
-                        tag.add_attribute("class", "help-sample help-hit");
+                        tag.add_attribute(
+                            "class",
+                            format!("{} {}", class::HELP_SAMPLE, class::HELP_HIT),
+                        );
 
                         if !self.marked {
                             self.marked = true;
@@ -215,7 +222,7 @@ impl Builder<'_> {
 /// An illustration: real markup that cannot be focused or pressed.
 fn sample(tag: &'static str, child: Html) -> VNode {
     let mut wrapper = VTag::new(tag);
-    wrapper.add_attribute("class", "help-sample");
+    wrapper.add_attribute("class", class::HELP_SAMPLE);
     wrapper.add_attribute("inert", "");
     wrapper.add_child(child);
     VNode::VTag(Rc::new(wrapper))
@@ -312,7 +319,7 @@ pub(crate) fn render(source: &str, go: Go<'_>, highlight: Option<&Highlight<'_>>
 
                     match go {
                         Some(onclick) => {
-                            link.add_attribute("class", "help-link");
+                            link.add_attribute("class", class::HELP_LINK);
                             link.add_attribute("href", format!("#{dest_url}"));
                             link.add_attribute("data-section", dest_url.into_string());
                             link.add_listener(Rc::new(onclick::Wrapper::new(onclick)));
@@ -498,7 +505,7 @@ mod tests {
                 .iter()
                 .find(|(k, _)| *k == "class")
                 .map(|(_, v)| v),
-            Some("help-sample help-hit")
+            Some("track-help-sample track-help-hit")
         );
     }
 }

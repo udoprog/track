@@ -3,6 +3,7 @@ use std::rc::Rc;
 use web_sys::{HtmlInputElement, InputEvent};
 use yew::prelude::*;
 
+use crate::class;
 use crate::router::Route;
 use crate::ui::{Image, Link, Modal};
 
@@ -35,14 +36,14 @@ pub(crate) fn cast_card_on(credit: &api::Credit, raised: bool) -> Html {
     let subtitle = credit_subtitle(credit).map(str::to_owned);
 
     html! {
-        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "sockel-card", "sockel-inset", "sockel-flush", raised.then_some("raised"))}>
-            <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
+        <Link to={Route::PersonDetail(credit.person_id)} class={classes!(class::CAST_CARD, sockel::class::CARD, sockel::class::INSET, sockel::class::FLUSH, raised.then_some(class::RAISED))}>
+            <Image class={class::CAST_PHOTO} placeholder={true} placeholder_icon={class::ICON_USER} src={credit.profile.clone()} alt={name.clone()} />
 
-            <div class="cast-info">
-                <div class="cast-name">{ name }</div>
+            <div class={class::CAST_INFO}>
+                <div class={class::CAST_NAME}>{ name }</div>
 
                 if let Some(subtitle) = subtitle {
-                    <div class="cast-character">{ subtitle }</div>
+                    <div class={class::CAST_CHARACTER}>{ subtitle }</div>
                 }
             </div>
         </Link>
@@ -87,8 +88,8 @@ pub(crate) fn CastModal(props: &Props) -> Html {
         .collect::<Vec<_>>();
 
     html! {
-        <Modal icon="user-group" title="Cast & crew" size={sockel::DialogSize::WideTall} testid="cast-modal" on_close={props.on_close.clone()}>
-            <div class="cast-search sockel-stack">
+        <Modal icon={class::ICON_USER_GROUP} title="Cast & crew" size={sockel::DialogSize::WideTall} testid="cast-modal" on_close={props.on_close.clone()}>
+            <div class={classes!(class::CAST_SEARCH, sockel::class::STACK)}>
                 <input
                     type="search"
                     class={sockel::class::INPUT}
@@ -101,9 +102,9 @@ pub(crate) fn CastModal(props: &Props) -> Html {
             </div>
 
             if found.is_empty() {
-                <p class="text-muted" data-test="cast-empty">{format!("No cast matches “{}”.", query.trim())}</p>
+                <p class={class::TEXT_MUTED} data-test="cast-empty">{format!("No cast matches “{}”.", query.trim())}</p>
             } else {
-                <div class="cast-grid">
+                <div class={class::CAST_GRID}>
                     { for found.iter().map(|c| cast_card_on(c, true)) }
                 </div>
             }

@@ -1,3 +1,4 @@
+use crate::class;
 use gloo::events::EventListener;
 use web_sys::HtmlImageElement;
 use yew::prelude::*;
@@ -26,7 +27,7 @@ pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) placeholder: bool,
     /// The icon the placeholder shows.
-    #[prop_or(AttrValue::Static("question-mark-circle"))]
+    #[prop_or(AttrValue::Static(class::ICON_QUESTION_MARK_CIRCLE))]
     pub(crate) placeholder_icon: AttrValue,
     #[prop_or_default]
     pub(crate) src: Option<api::Image>,
@@ -90,7 +91,7 @@ impl Component for Image {
         match self.state {
             State::Loading => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class="icon arrow-path spin" aria-hidden="true" />
+                    <span class={classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN)} aria-hidden="true" />
                 </image>
             },
             State::Loaded(ref src) => html! {
@@ -100,12 +101,12 @@ impl Component for Image {
             },
             State::Error => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class="icon exclamation-triangle" aria-hidden="true" />
+                    <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                 </image>
             },
             State::Empty if props.placeholder => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class={classes!("icon", props.placeholder_icon.clone())} aria-hidden="true" />
+                    <span class={classes!(class::ICON, props.placeholder_icon.clone())} aria-hidden="true" />
                 </image>
             },
             _ => html!(),

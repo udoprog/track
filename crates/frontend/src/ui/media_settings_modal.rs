@@ -7,6 +7,7 @@ use yew::prelude::*;
 
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{Button, FormRow, SyncButton, mismatch_message};
 
@@ -156,7 +157,7 @@ impl Component for MediaSettingsModal {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <Modal icon="cog-6-tooth" title="Settings" on_close={ctx.props().on_close.clone()}>
+            <Modal icon={class::ICON_COG_6_TOOTH} title="Settings" on_close={ctx.props().on_close.clone()}>
                 { self.view_content(ctx) }
             </Modal>
         }
@@ -557,7 +558,7 @@ impl MediaSettingsModal {
 
     fn view_content(&self, ctx: &Context<Self>) -> Html {
         let Some(data) = self.data.as_ref() else {
-            return html!(<div class="text-muted">{"Loading…"}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"Loading…"}</div>);
         };
 
         let link = ctx.link();
@@ -669,7 +670,7 @@ impl MediaSettingsModal {
                     if let Some(ts) = last_synced {
                         <span title="Last synced at">{ts}</span>
                     } else {
-                        <span class="text-muted">{"Never"}</span>
+                        <span class={class::TEXT_MUTED}>{"Never"}</span>
                     }
 
                     if has_remotes {
@@ -680,16 +681,16 @@ impl MediaSettingsModal {
                 if admin {
                     if has_images {
                         <FormRow label="Graphics" hint="The poster, backdrop, banner and other artwork.">
-                            <Button icon="photo" label="Edit graphics" title="Edit graphics" onclick={on_edit_graphics} />
+                            <Button icon={class::ICON_PHOTO} label="Edit graphics" title="Edit graphics" onclick={on_edit_graphics} />
                         </FormRow>
                     } else {
                         <FormRow label="Graphics" hint="Sync to fetch artwork.">
-                            <span class="text-muted">{"None yet"}</span>
+                            <span class={class::TEXT_MUTED}>{"None yet"}</span>
                         </FormRow>
                     }
 
                     <FormRow label="Remotes" hint="The TMDB, TVDB and other identifiers used to sync.">
-                        <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={on_edit_remotes} />
+                        <Button icon={class::ICON_IDENTIFICATION} label="Edit remotes" title="Edit remotes" onclick={on_edit_remotes} />
                     </FormRow>
                 }
             </div>
@@ -728,7 +729,7 @@ impl MediaSettingsModal {
                 </FormRow>
 
                 if let Some(editor) = editor {
-                    <div class="form-wide">{editor}</div>
+                    <div class={class::FORM_WIDE}>{editor}</div>
                 }
             </>
         }
@@ -793,18 +794,18 @@ impl MediaSettingsModal {
                     .next()
                 {
                     Some(m) => html! {
-                        <div class="numbering-warning">
-                            <span class="icon exclamation-triangle" aria-hidden="true" />
+                        <div class={class::NUMBERING_WARNING}>
+                            <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                             <span>
                                 {mismatch_message(&m)}{" "}
-                                <button type="button" class="link-button" onclick={on_review}>
+                                <button type="button" class={class::LINK_BUTTON} onclick={on_review}>
                                     {"Compare in the range editor"}
                                 </button>
                             </span>
                         </div>
                     },
                     None => html! {
-                        <button type="button" class="link-button numbering-view-map" onclick={on_review}>
+                        <button type="button" class={classes!(class::LINK_BUTTON, "numbering-view-map")} onclick={on_review}>
                             {"View map"}
                         </button>
                     },
@@ -825,7 +826,7 @@ impl MediaSettingsModal {
                 </select>
 
                 if manual {
-                    <Button icon="adjustments-horizontal" label="Edit ranges" title="Edit ranges" onclick={on_edit} />
+                    <Button icon={class::ICON_ADJUSTMENTS_HORIZONTAL} label="Edit ranges" title="Edit ranges" onclick={on_edit} />
                 }
 
                 {warning}
@@ -862,7 +863,7 @@ impl MediaSettingsModal {
                 </FormRow>
 
                 if let Some(editor) = editor {
-                    <div class="form-wide">{editor}</div>
+                    <div class={class::FORM_WIDE}>{editor}</div>
                 }
             </>
         }

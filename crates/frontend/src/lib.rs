@@ -8,6 +8,23 @@ mod background;
 #[allow(dead_code)]
 mod class {
     include!(concat!(env!("OUT_DIR"), "/classes.rs"));
+
+    /// The logo class of a source or numbering system by its id (`"tmdb"`),
+    /// or none for an id without a logo.
+    pub(crate) fn logo(id: &str) -> Option<&'static str> {
+        Some(match id {
+            "imdb" => IMDB,
+            "tmdb" => TMDB,
+            "tvdb" => TVDB,
+            "tvmaze" => TVMAZE,
+            "xem" => XEM,
+            "anidb" => ANIDB,
+            "scene" => SCENE,
+            "trakt" => TRAKT,
+            "rage" => RAGE,
+            _ => return None,
+        })
+    }
 }
 mod error;
 mod flags;

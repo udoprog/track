@@ -8,6 +8,7 @@ use web_sys::{Element, HtmlElement, PointerEvent, WheelEvent};
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 
 /// A single navigable entry in the outline. `code` is the `id` of the rendered
@@ -207,17 +208,17 @@ impl Component for Outline {
         html! {
             <div data-testid="outline"
                 ref={self.outline.clone()}
-                class={classes!("outline", (!props.entries.is_empty()).then_some("visible"))}
+                class={classes!(class::OUTLINE, (!props.entries.is_empty()).then_some(class::VISIBLE))}
                 onpointerdown={link.callback(Msg::PointerDown)}
                 onpointermove={link.callback(Msg::PointerMove)}
                 onpointerup={link.callback(Msg::PointerUp)}
                 onwheel={link.callback(Msg::Wheel)}>
-                <div class="outline-mark" ref={self.mark.clone()} />
+                <div class={class::OUTLINE_MARK} ref={self.mark.clone()} />
                 { for self.marks.iter().enumerate().map(|(i, mark)| {
                     let hidden = self.hidden.get(i).copied().unwrap_or(false);
 
                     html! {
-                        <div class={classes!("outline-sample", hidden.then_some("hidden"), mark.seen.then_some("seen"), mark.pending.then_some("pending"))} style={format!("top: {}%;", mark.top)} title={mark.label.clone()}>
+                        <div class={classes!(class::OUTLINE_SAMPLE, hidden.then_some(class::HIDDEN), mark.seen.then_some(class::SEEN), mark.pending.then_some(class::PENDING))} style={format!("top: {}%;", mark.top)} title={mark.label.clone()}>
                             {mark.label.clone()}
                         </div>
                     }
@@ -355,7 +356,7 @@ impl Outline {
             return;
         };
 
-        let samples = outline.get_elements_by_class_name("outline-sample");
+        let samples = outline.get_elements_by_class_name(class::OUTLINE_SAMPLE);
         let rail_top = outline.get_bounding_client_rect().top();
 
         let mut last_bottom = f64::NEG_INFINITY;

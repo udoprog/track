@@ -3,6 +3,7 @@ use web_sys::MouseEvent;
 use yew::html::IntoPropValue;
 use yew::prelude::*;
 
+use crate::class;
 use crate::router::{Route, Router};
 use crate::ui::link;
 
@@ -115,11 +116,11 @@ pub(crate) fn Button(props: &Props) -> Html {
     // A switch without an icon shows whether it is on: a check or a cross.
     let icon = if !props.icon.is_empty() {
         Some(
-            html! { <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} /> },
+            html! { <span class={classes!(class::ICON, props.icon.clone(), props.spin.then_some(class::SPIN))} /> },
         )
     } else {
         props.checked.map(
-            |on| html! { <span class={classes!("icon", if on { "check" } else { "x-mark" })} /> },
+            |on| html! { <span class={classes!(class::ICON, if on { class::ICON_CHECK } else { class::ICON_X_MARK })} /> },
         )
     };
     let router = use_context::<Router>();

@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use yew::prelude::*;
 
+use crate::class;
 use crate::ui::Button;
 
 #[derive(Properties, PartialEq)]
@@ -21,14 +22,14 @@ pub(crate) fn GraphicsSourceFilter(props: &Props) -> Html {
     }
 
     html! {
-        <div class="input-group">
+        <div class={class::INPUT_GROUP}>
             {for props.present.iter().copied().map(|source| {
                 let checked = !props.hidden.contains(&source);
                 let on_toggle = props.on_toggle.reform(move |_| source);
 
                 html! {
                     <Button role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
-                        <span class={classes!("logo", "in-label", source.as_str())} />
+                        <span class={classes!(class::LOGO, class::IN_LABEL, class::logo(source.as_str()))} />
                     </Button>
                 }
             })}

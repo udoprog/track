@@ -7,6 +7,7 @@ use yew::prelude::*;
 
 use api::TimeInfo;
 
+use crate::class;
 use crate::ui::{Button, ContextMenu, Variant};
 
 /// A quick preset that loads an instant into the picker without submitting.
@@ -271,30 +272,30 @@ impl Component for MarkTimeMenu {
         html! {
             <>
                 if props.quick {
-                    <Button icon={props.icon.clone().unwrap_or(AttrValue::Static("check"))} variant={props.variant} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
+                    <Button icon={props.icon.clone().unwrap_or(AttrValue::Static(class::ICON_CHECK))} variant={props.variant} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
 
-                    <Button node_ref={self.anchor.clone()} icon="chevron-down" variant={props.variant} class={classes!("mark-time-more", self.context_open.then_some("selected"))} title="Choose when" expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
+                    <Button node_ref={self.anchor.clone()} icon={class::ICON_CHEVRON_DOWN} variant={props.variant} class={classes!(class::MARK_TIME_MORE, self.context_open.then_some(class::SELECTED))} title="Choose when" expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
                 } else {
                     <Button node_ref={self.anchor.clone()} icon={props.trigger_icon.clone().or_else(|| props.icon.clone()).unwrap_or_default()} variant={props.variant} label={props.label.clone()} text={props.text.clone()} title={props.title.clone()} expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
                 }
 
                 if self.context_open {
                     <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
-                        <div class="mark-time sockel-stack sockel-loose">
+                        <div class={classes!(class::MARK_TIME, sockel::class::STACK, sockel::class::LOOSE)}>
                             {self.view_presets(ctx)}
 
                             if self.preset == Preset::Custom {
                                 {self.view_fields(ctx)}
                             } else {
-                                <div class="mark-time-resolved">
+                                <div class={class::MARK_TIME_RESOLVED}>
                                     {self.view_resolved(ctx)}
                                 </div>
                             }
 
-                            <div class="mark-time-actions">
-                                <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Close)} />
+                            <div class={class::MARK_TIME_ACTIONS}>
+                                <Button icon={class::ICON_X_MARK} label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Close)} />
 
-                                <Button icon="check" label="Confirm" title="Confirm" variant={Variant::Primary} onclick={link.callback(|_| Msg::Confirm)} />
+                                <Button icon={class::ICON_CHECK} label="Confirm" title="Confirm" variant={Variant::Primary} onclick={link.callback(|_| Msg::Confirm)} />
                             </div>
                         </div>
                     </ContextMenu>
@@ -328,7 +329,7 @@ impl MarkTimeMenu {
         });
 
         html! {
-            <div class="mark-time-fields">
+            <div class={class::MARK_TIME_FIELDS}>
                 <label>
                     <span>{"Date"}</span>
                     <input type="date" class={sockel::class::INPUT} value={date} onchange={on_date} />
@@ -365,11 +366,11 @@ impl MarkTimeMenu {
         let link = ctx.link();
         let props = ctx.props();
 
-        let chip = |on: bool| classes!("chip", on.then_some("selected"));
+        let chip = |on: bool| classes!(class::CHIP, on.then_some(class::SELECTED));
 
         html! {
-            <div class="chips sockel-cluster" role="group" aria-label="When">
-                <Button icon="clock" label="Now" title="Now" class={chip(self.preset == Preset::Now)} pressed={Some(self.preset == Preset::Now)} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))} />
+            <div class={classes!(class::CHIPS, sockel::class::CLUSTER)} role="group" aria-label="When">
+                <Button icon={class::ICON_CLOCK} label="Now" title="Now" class={chip(self.preset == Preset::Now)} pressed={Some(self.preset == Preset::Now)} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))} />
 
                 {props.preset.as_ref().map(|preset| {
                     let on = self.preset == Preset::Supplied;
@@ -379,7 +380,7 @@ impl MarkTimeMenu {
                     }
                 })}
 
-                <Button icon="pencil-square" label="Custom" title="Custom time" class={chip(self.preset == Preset::Custom)} pressed={Some(self.preset == Preset::Custom)} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))} />
+                <Button icon={class::ICON_PENCIL_SQUARE} label="Custom" title="Custom time" class={chip(self.preset == Preset::Custom)} pressed={Some(self.preset == Preset::Custom)} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))} />
             </div>
         }
     }

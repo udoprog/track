@@ -2,6 +2,7 @@
 //! sockel's compact confirm, "Remove show **Title**?" over an icon-only
 //! No and Yes.
 
+use crate::class;
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -22,15 +23,15 @@ pub(crate) fn Confirm(props: &Props) -> Html {
     let (title, details) = match &props.label {
         Some(label) => (
             format!("{} {label}", props.prompt),
-            html! { <span><span class="context-menu-label">{label.clone()}</span><span>{"?"}</span></span> },
+            html! { <span><span class={class::CONTEXT_MENU_LABEL}>{label.clone()}</span><span>{"?"}</span></span> },
         ),
         None => (props.prompt.to_string(), Html::default()),
     };
 
     let icon = props.icon.as_ref().map(|icon| {
         html! {
-            <span class="item-inline" aria-hidden="true">
-                <span class={classes!("icon", icon.clone())} aria-hidden="true" />
+            <span class={class::ITEM_INLINE} aria-hidden="true">
+                <span class={classes!(class::ICON, icon.clone())} aria-hidden="true" />
             </span>
         }
     });

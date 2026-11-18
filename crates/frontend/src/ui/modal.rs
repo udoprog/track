@@ -1,3 +1,4 @@
+use crate::class;
 use sockel::{ButtonSize, Dialog, DialogSize};
 use yew::prelude::*;
 
@@ -23,8 +24,8 @@ pub(crate) struct Props {
 #[function_component]
 pub(crate) fn Modal(props: &Props) -> Html {
     let icon = html! {
-        <span class="item-inline">
-            <span class={classes!("icon", "muted", props.icon.clone())} />
+        <span class={class::ITEM_INLINE}>
+            <span class={classes!(class::ICON, class::MUTED, props.icon.clone())} />
         </span>
     };
 

@@ -1,5 +1,6 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::flags;
 use crate::help;
 use crate::ui::{Help, Modal};
@@ -18,13 +19,13 @@ pub(crate) struct Props {
 #[function_component]
 pub(crate) fn NamesModal(props: &Props) -> Html {
     html! {
-        <Modal icon="tag" title="Other names" testid="names-modal" on_close={props.on_close.clone()}>
-            <p class="names-intro text-muted">
+        <Modal icon={class::ICON_TAG} title="Other names" testid="names-modal" on_close={props.on_close.clone()}>
+            <p class={classes!(class::NAMES_INTRO, class::TEXT_MUTED)}>
                 {"Other titles this show and its seasons go by, with each one's language and where it comes from."}
                 <Help section={help::NAMES} />
             </p>
 
-            <div class="translations sockel-stack sockel-loose">
+            <div class={classes!(class::TRANSLATIONS, sockel::class::STACK, sockel::class::LOOSE)}>
                 if !props.names.is_empty() {
                     <section>
                         <h3>{"Show"}</h3>
@@ -41,8 +42,8 @@ pub(crate) fn NamesModal(props: &Props) -> Html {
 
                             html! {
                                 <>
-                                    <h4 class="names-target" title={format!("{label} season {}", group.target.season)}>
-                                        <span class={classes!("logo", group.target.system.clone())} aria-hidden="true" />
+                                    <h4 class={class::NAMES_TARGET} title={format!("{label} season {}", group.target.season)}>
+                                        <span class={classes!(class::LOGO, class::logo(&group.target.system))} aria-hidden="true" />
                                         <span>{format!("{label} Season {}", group.target.season)}</span>
                                     </h4>
 
@@ -59,7 +60,7 @@ pub(crate) fn NamesModal(props: &Props) -> Html {
 
 fn view_names(names: &[api::AltName]) -> Html {
     html! {
-        <div class="translation-rows beside">
+        <div class={classes!(class::TRANSLATION_ROWS, class::BESIDE)}>
             { for names.iter().map(view_name) }
         </div>
     }
@@ -77,10 +78,10 @@ fn view_name(n: &api::AltName) -> Html {
     };
 
     html! {
-        <div class="translation-row alt-name">
-            <span class={classes!("translation-language", language.is_none().then_some("unknown"))} {title}>
+        <div class={classes!(class::TRANSLATION_ROW, "alt-name")}>
+            <span class={classes!(class::TRANSLATION_LANGUAGE, language.is_none().then_some(class::UNKNOWN))} {title}>
                 if let Some(flag) = language.and_then(|l| l.flag).filter(|flag| flags::has_flag(flag)) {
-                    <span class={classes!("item-inline", "flag", flag)} aria-hidden="true" />
+                    <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} aria-hidden="true" />
                 }
 
                 <span class="alt-name-language">{language.map_or("Unknown language", |l| l.name)}</span>
@@ -88,7 +89,7 @@ fn view_name(n: &api::AltName) -> Html {
 
             <span class="alt-name-text">
                 {n.name.clone()}
-                <span class={classes!("alt-name-origin", "logo", n.origin.as_id())} role="img" title={format!("From {origin}")} aria-label={format!("From {origin}")} />
+                <span class={classes!(class::ALT_NAME_ORIGIN, class::LOGO, class::logo(n.origin.as_id()))} role="img" title={format!("From {origin}")} aria-label={format!("From {origin}")} />
             </span>
         </div>
     }

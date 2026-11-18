@@ -9,6 +9,7 @@
 
 use yew::prelude::*;
 
+use crate::class;
 use crate::flags;
 
 use super::{Button, ContextMenu, locale_label};
@@ -21,7 +22,7 @@ pub(crate) struct Props {
     #[prop_or(api::StringKind::Overview)]
     pub(crate) kind: api::StringKind,
     /// Classes for the text paragraph.
-    #[prop_or_else(|| classes!("overview"))]
+    #[prop_or_else(|| classes!(class::OVERVIEW))]
     pub(crate) class: Classes,
 }
 
@@ -113,15 +114,15 @@ impl Component for TranslatedText {
             displayed.filter(|locale| locale.language() != props.strings.locale().language());
 
         let toggle = html! {
-            <Button node_ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" expanded={Some(self.open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
+            <Button node_ref={self.anchor.clone()} class={class::LANGUAGE_TOGGLE} title="Change displayed language" expanded={Some(self.open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
                 if let Some(locale) = foreign {
                     if let Some(flag) = locale.flag().filter(|flag| flags::has_flag(flag)) {
-                        <span class={classes!("flag", flag)} />
+                        <span class={classes!(class::FLAG, flag)} />
                     } else {
-                        <span class="text-muted">{locale}</span>
+                        <span class={class::TEXT_MUTED}>{locale}</span>
                     }
                 } else {
-                    <span class="icon sm language" aria-hidden="true" />
+                    <span class={classes!(class::ICON, class::SM, class::ICON_LANGUAGE)} aria-hidden="true" />
                 }
             </Button>
         };
@@ -131,23 +132,23 @@ impl Component for TranslatedText {
                 if let Some(text) = text {
                     <p class={props.class.clone()}>{toggle}{text}</p>
                 } else {
-                    <div class="text-muted">{toggle}{"No translation for this language."}</div>
+                    <div class={class::TEXT_MUTED}>{toggle}{"No translation for this language."}</div>
                 }
 
                 if self.open {
-                    <ContextMenu icon="language" prompt="Displayed language" anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
-                        <div class="table">
-                            <Button class={classes!("clickable", "sockel-cluster", "sockel-nowrap", "sockel-loose", self.selected.is_none().then_some("active"))} title="Use the default language" pressed={Some(self.selected.is_none())} onclick={link.callback(|_| Msg::Pick(None))}>
-                                <span class="fill">{"Default"}</span>
+                    <ContextMenu icon={class::ICON_LANGUAGE} prompt="Displayed language" anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
+                        <div class={class::TABLE}>
+                            <Button class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, self.selected.is_none().then_some(class::ACTIVE))} title="Use the default language" pressed={Some(self.selected.is_none())} onclick={link.callback(|_| Msg::Pick(None))}>
+                                <span class={class::FILL}>{"Default"}</span>
 
                                 if self.selected.is_none() {
-                                    <span class="item-inline">
-                                        <span class="icon check" aria-hidden="true" />
+                                    <span class={class::ITEM_INLINE}>
+                                        <span class={classes!(class::ICON, class::ICON_CHECK)} aria-hidden="true" />
                                     </span>
                                 }
 
-                                <span class="item-inline">
-                                    <span class="icon icon-4x3 language" aria-hidden="true" />
+                                <span class={class::ITEM_INLINE}>
+                                    <span class={classes!(class::ICON, class::ICON_4X3, class::ICON_LANGUAGE)} aria-hidden="true" />
                                 </span>
                             </Button>
 
@@ -158,20 +159,20 @@ impl Component for TranslatedText {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={locale.to_string()} class={classes!("clickable", "sockel-cluster", "sockel-nowrap", "sockel-loose", selected.then_some("active"))} title={format!("Show in {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(Some(locale)))}>
-                                        <span class="fill">{name}</span>
+                                    <Button key={locale.to_string()} class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, selected.then_some(class::ACTIVE))} title={format!("Show in {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(Some(locale)))}>
+                                        <span class={class::FILL}>{name}</span>
 
                                         if selected {
-                                            <span class="item-inline">
-                                                <span class="icon check" aria-hidden="true" />
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={classes!(class::ICON, class::ICON_CHECK)} aria-hidden="true" />
                                             </span>
                                         }
 
                                         if let Some(flag) = flag {
-                                            <span class={classes!("item-inline", "flag", flag)} title={locale} />
+                                            <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} title={locale} />
                                         } else {
-                                            <span class="item-inline">
-                                                <span class="text-muted">{locale}</span>
+                                            <span class={class::ITEM_INLINE}>
+                                                <span class={class::TEXT_MUTED}>{locale}</span>
                                             </span>
                                         }
                                     </Button>

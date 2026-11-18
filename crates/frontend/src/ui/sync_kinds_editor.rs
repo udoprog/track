@@ -4,6 +4,7 @@ use yew::prelude::*;
 use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::Button;
+use crate::class;
 
 /// Sources that can contribute syncable data, with the kinds they support fixed
 /// by [`api::RemoteSource::default_sync_kinds`].
@@ -60,7 +61,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class="form" {on_move} quick_keys=true titles=true>
+        <Reorder class={class::FORM} {on_move} quick_keys=true titles=true>
             {
                 for entries.iter().enumerate().map(|(index, entry)| {
                     let source = entry.source;
@@ -68,11 +69,11 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                     let current = entry.kinds.intersect(capability);
 
                     html_nested! {
-                        <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group sockel-cluster sockel-nowrap">
+                        <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP)}>
                             <ReorderHandle />
 
-                            <span class="input-label has-text">
-                                <span class={classes!("logo", source.as_id())} />
+                            <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>
+                                <span class={classes!(class::LOGO, class::logo(source.as_id()))} />
                             </span>
 
                             { for capability.iter().map(|kind| {

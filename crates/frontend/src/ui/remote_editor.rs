@@ -1,6 +1,7 @@
 use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
+use crate::class;
 use crate::help;
 use crate::ui::Help;
 
@@ -383,13 +384,13 @@ impl Component for RemoteEditor {
         let editing = self.editing.is_some();
 
         html! {
-            <Modal icon="identification" title="Remotes" on_close={link.callback(|_| Msg::Close)}>
+            <Modal icon={class::ICON_IDENTIFICATION} title="Remotes" on_close={link.callback(|_| Msg::Close)}>
                 if props.remotes.is_empty() {
-                    <div class="table">
-                        <div class="text-muted">{"No remotes"}</div>
+                    <div class={class::TABLE}>
+                        <div class={class::TEXT_MUTED}>{"No remotes"}</div>
                     </div>
                 } else {
-                    <Reorder class="table" on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
+                    <Reorder class={class::TABLE} on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
                         { for self.remotes.iter().map(|r| {
                             let key = r.remote.remote.to_string();
 
@@ -417,8 +418,8 @@ impl Component for RemoteEditor {
                             let overriding = r.remote.sync_kinds.is_some();
 
                             let kind_toggles = (!capability.is_empty()).then(|| html! {
-                                <div class="sockel-cluster sockel-tight" role="group" aria-label="Kinds synced from this source">
-                                    <span class="text-muted">{"Syncs"}</span>
+                                <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT)} role="group" aria-label="Kinds synced from this source">
+                                    <span class={class::TEXT_MUTED}>{"Syncs"}</span>
                                     <Help section={help::REMOTES} />
 
                                     { for capability.iter().map(|kind| {
@@ -431,7 +432,7 @@ impl Component for RemoteEditor {
                                     }) }
 
                                     if overriding {
-                                        <Button icon="arrow-uturn-left" label="Use default" title="Reset to global default" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} />
+                                        <Button icon={class::ICON_ARROW_UTURN_LEFT} label="Use default" title="Reset to global default" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} />
                                     }
                                 </div>
                             });
@@ -444,9 +445,9 @@ impl Component for RemoteEditor {
 
                             let identifier = html! {
                                 <>
-                                    <span class={classes!("logo", r.remote.remote.source().as_id())} aria-hidden="true" />
+                                    <span class={classes!(class::LOGO, class::logo(r.remote.remote.source().as_id()))} aria-hidden="true" />
 
-                                    <span class="mono" data-testid="remote-id">
+                                    <span class={class::MONO} data-testid="remote-id">
                                         {r.remote.remote.value().to_string()}
 
                                         if let Some(slug) = r.remote.slug.as_deref() {
@@ -461,23 +462,23 @@ impl Component for RemoteEditor {
                             };
 
                             html_nested! {
-                                <ReorderItem id={key} name={r.remote.remote.to_string()} class="remote sockel-stack sockel-tight">
-                                    <div class="sockel-cluster sockel-tight">
+                                <ReorderItem id={key} name={r.remote.remote.to_string()} class={classes!("remote", sockel::class::STACK, sockel::class::TIGHT)}>
+                                    <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT)}>
                                         <ReorderHandle />
 
                                         if let Some(url) = url {
-                                            <a class="remote-link sockel-cluster sockel-nowrap sockel-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
+                                            <a class={classes!(class::REMOTE_LINK, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT)} data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
                                                 {identifier}
                                             </a>
                                         } else {
-                                            <span class="remote-link sockel-cluster sockel-nowrap sockel-tight" data-testid="remote-link">{identifier}</span>
+                                            <span class={classes!(class::REMOTE_LINK, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT)} data-testid="remote-link">{identifier}</span>
                                         }
 
-                                        <div class="sockel-push-end sockel-cluster sockel-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
+                                        <div class={classes!(sockel::class::PUSH_END, sockel::class::CLUSTER, sockel::class::TIGHT)} data-testid="remote-actions" ref={r.context_anchor.clone()}>
                                             <Button size={Size::Small} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} label={if enabled { "Enabled" } else { "Disabled" }} />
 
-                                            <Button size={Size::Small} icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
-                                            <Button size={Size::Small} icon="trash" label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
+                                            <Button size={Size::Small} icon={class::ICON_PENCIL_SQUARE} label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
+                                            <Button size={Size::Small} icon={class::ICON_TRASH} label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
                                         </div>
 
                                         if self.confirming_remove == Some(id) {
@@ -488,7 +489,7 @@ impl Component for RemoteEditor {
                                     {kind_toggles}
 
                                     if let Some(ref cache) = r.remote.cache {
-                                        <div class="remote-cache sockel-cluster sockel-loose sockel-between sockel-top">
+                                        <div class={classes!(class::REMOTE_CACHE, sockel::class::CLUSTER, sockel::class::LOOSE, sockel::class::BETWEEN, sockel::class::TOP)}>
                                             <dl>
                                                 if let Some(ref last_updated) = cache.last_updated {
                                                     <dt>{"Last updated"}</dt>
@@ -497,7 +498,7 @@ impl Component for RemoteEditor {
 
                                                 if let Some(ref etag) = cache.etag {
                                                     <dt>{"ETag"}</dt>
-                                                    <dd class="remote-etag mono sockel-truncate" title={etag.clone()}>{etag}</dd>
+                                                    <dd class={classes!("remote-etag", class::MONO, sockel::class::TRUNCATE)} title={etag.clone()}>{etag}</dd>
                                                 }
 
                                                 if !cache.kinds.is_empty() {
@@ -506,7 +507,7 @@ impl Component for RemoteEditor {
                                                 }
                                             </dl>
 
-                                            <Button icon="arrow-path" label="Clear cache" title="Clear cache and force resync" onclick={link.callback(move |_| Msg::PurgeCache(id))} />
+                                            <Button icon={class::ICON_ARROW_PATH} label="Clear cache" title="Clear cache and force resync" onclick={link.callback(move |_| Msg::PurgeCache(id))} />
 
                                             // Sub-requests that failed on the last sync. They are
                                             // suppressed (not retried) until "Retries", so a source
@@ -514,16 +515,16 @@ impl Component for RemoteEditor {
                                             // call every sync - at the price of a silently partial
                                             // entity, which is why they are surfaced here.
                                             if !cache.errors.is_empty() {
-                                                <div class="remote-errors">
-                                                    <span class="text-muted">{"Kind"}</span>
-                                                    <span class="text-muted">{"Request"}</span>
-                                                    <span class="text-muted">{"Error"}</span>
-                                                    <span class="text-muted">{"Retries"}</span>
+                                                <div class={class::REMOTE_ERRORS}>
+                                                    <span class={class::TEXT_MUTED}>{"Kind"}</span>
+                                                    <span class={class::TEXT_MUTED}>{"Request"}</span>
+                                                    <span class={class::TEXT_MUTED}>{"Error"}</span>
+                                                    <span class={class::TEXT_MUTED}>{"Retries"}</span>
 
                                                     { for cache.errors.iter().map(|e| html! {
                                                         <>
                                                             <span>{e.kind.as_label()}</span>
-                                                            <span class="mono" data-testid="remote-id">{&e.key}</span>
+                                                            <span class={class::MONO} data-testid="remote-id">{&e.key}</span>
                                                             <span>{&e.message}</span>
                                                             <span>{e.expires_at().to_string()}</span>
                                                         </>
@@ -538,43 +539,43 @@ impl Component for RemoteEditor {
                     </Reorder>
                 }
 
-                <div class="form">
-                    <div class={classes!("field", self.error.is_some().then_some("error"))}>
-                        <div class="input-group fill">
+                <div class={class::FORM}>
+                    <div class={classes!(class::FIELD, self.error.is_some().then_some(class::ERROR))}>
+                        <div class={classes!(class::INPUT_GROUP, class::FILL)}>
                             <select ref={self.source_ref.clone()} class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} onchange={on_source} title="Source">
                                 { for addable_sources(props.kind).map(|source| html! {
                                     <option value={source.as_id()} selected={self.source == source}>{source.as_label()}</option>
                                 }) }
                             </select>
 
-                            <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
+                            <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
 
-                            <Button icon="link" label="Slug" title={if self.show_slug { "Showing slug" } else { "Hiding slug" }} class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
+                            <Button icon={class::ICON_LINK} label="Slug" title={if self.show_slug { "Showing slug" } else { "Hiding slug" }} class={classes!(self.show_slug.then_some(class::SELECTED))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
-                            <Button icon={if editing { "check" } else { "plus" }} label={if editing { "Save" } else { "Add" }} title={if editing { "Save identifier" } else { "Add identifier" }} variant={Variant::Primary} disabled={self.value.trim().is_empty()} onclick={link.callback(|_| Msg::Submit)} />
+                            <Button icon={if editing { class::ICON_CHECK } else { class::ICON_PLUS }} label={if editing { "Save" } else { "Add" }} title={if editing { "Save identifier" } else { "Add identifier" }} variant={Variant::Primary} disabled={self.value.trim().is_empty()} onclick={link.callback(|_| Msg::Submit)} />
 
                             if editing {
-                                <Button icon="x-mark" title="Cancel edit" onclick={link.callback(|_| Msg::CancelEdit)} />
+                                <Button icon={class::ICON_X_MARK} title="Cancel edit" onclick={link.callback(|_| Msg::CancelEdit)} />
                             }
                         </div>
 
                         if self.show_slug {
-                            <div class="input-group fill">
-                                <span class="input-label has-text" title="Slug">{"/"}</span>
-                                <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
+                            <div class={classes!(class::INPUT_GROUP, class::FILL)}>
+                                <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)} title="Slug">{"/"}</span>
+                                <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
 
                                 if !self.slug.is_empty() {
-                                    <Button icon="backspace" title="Clear slug" onclick={link.callback(|_| Msg::ClearSlug)} />
+                                    <Button icon={class::ICON_BACKSPACE} title="Clear slug" onclick={link.callback(|_| Msg::ClearSlug)} />
                                 }
                             </div>
                         }
 
                         if let Some(ref error) = self.error {
-                            <span class="field-error" role="alert">{error}</span>
+                            <span class={class::FIELD_ERROR} role="alert">{error}</span>
                         }
 
                         if let Some(hint) = hint(self.source) {
-                            <span class="hint">{hint}</span>
+                            <span class={class::HINT}>{hint}</span>
                         }
                     </div>
                 </div>

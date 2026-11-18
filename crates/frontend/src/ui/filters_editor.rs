@@ -1,6 +1,7 @@
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
+use crate::class;
 use crate::flags;
 
 use sockel::{Reorder, ReorderHandle, ReorderItem};
@@ -194,17 +195,17 @@ impl Component for FiltersEditor {
 
         let toggle = match self.mode {
             Mode::View => html! {
-                <Button icon="pencil-square" label="Edit rules" title="Edit rules" onclick={link.callback(|_| Msg::Edit)} />
+                <Button icon={class::ICON_PENCIL_SQUARE} label="Edit rules" title="Edit rules" onclick={link.callback(|_| Msg::Edit)} />
             },
             Mode::Edit => html! {
-                <Button icon="check" label="Save rules" title="Save rules" variant={Variant::Primary} onclick={link.callback(|_| Msg::Save)} />
+                <Button icon={class::ICON_CHECK} label="Save rules" title="Save rules" variant={Variant::Primary} onclick={link.callback(|_| Msg::Save)} />
             },
         };
 
         html! {
-            <div class="form">
+            <div class={class::FORM}>
                 if let Mode::Edit = self.mode {
-                    <Reorder class="form" on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
+                    <Reorder class={class::FORM} on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
                         {for props.rules.iter().enumerate().map(|(index, rule)| html_nested! {
                             <ReorderItem id={self.ids.get(index).copied().unwrap_or_default().to_string()} name={rule_label(rule, index)}>
                                 { self.view_rule(props, index, rule) }
@@ -215,9 +216,9 @@ impl Component for FiltersEditor {
                     {for rules}
                 }
 
-                <div class="sockel-cluster sockel-nowrap sockel-loose">
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                     {toggle}
-                    <Button icon="plus" label="Add rule" title="Add rule" onclick={link.callback(|_| Msg::AddRule)} />
+                    <Button icon={class::ICON_PLUS} label="Add rule" title="Add rule" onclick={link.callback(|_| Msg::AddRule)} />
                 </div>
             </div>
         }
@@ -235,8 +236,8 @@ impl FiltersEditor {
 
         let summaries = rule.predicates.iter().map(|p| {
             html! {
-                <div class="sockel-cluster sockel-loose">
-                    <span class="input-label has-text">{p.kind().label()}</span>
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::LOOSE)}>
+                    <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{p.kind().label()}</span>
                     {self.predicate_summary(p)}
                 </div>
             }
@@ -244,12 +245,12 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="sockel-cluster sockel-between sockel-loose">
-                    <span class="has-text">{name.clone()}</span>
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
+                    <span class={class::HAS_TEXT}>{name.clone()}</span>
 
-                    <div ref={anchor.clone()} class="input-group">
+                    <div ref={anchor.clone()} class={class::INPUT_GROUP}>
                         <Button
-                            icon="trash"
+                            icon={class::ICON_TRASH}
                             variant={Variant::Danger}
                             title="Remove rule"
                             expanded={Some(self.confirming_remove == Some(index))}
@@ -264,7 +265,7 @@ impl FiltersEditor {
                 </div>
 
                 if rule.predicates.is_empty() {
-                    <span class="has-text">{"Matches everything"}</span>
+                    <span class={class::HAS_TEXT}>{"Matches everything"}</span>
                 } else {
                     {for summaries}
                 }
@@ -279,8 +280,8 @@ impl FiltersEditor {
                 html! {
                     {for v.iter().map(|s| {
                         html! {
-                            <span class="item-inline">
-                                <span class={classes!("logo", s.as_id())} title={s.as_label()} />
+                            <span class={class::ITEM_INLINE}>
+                                <span class={classes!(class::LOGO, class::logo(s.as_id()))} title={s.as_label()} />
                             </span>
                         }
                     })}
@@ -289,8 +290,8 @@ impl FiltersEditor {
             api::FilterPredicate::Countries(v) => {
                 if v.is_empty() {
                     html! {
-                        <span class="sockel-input-box input-value">
-                            <span class="icon globe-alt" aria-hidden="true" />
+                        <span class={classes!(sockel::class::INPUT_BOX, class::INPUT_VALUE)}>
+                            <span class={classes!(class::ICON, class::ICON_GLOBE_ALT)} aria-hidden="true" />
                             <span>{"All countries"}</span>
                         </span>
                     }
@@ -299,11 +300,11 @@ impl FiltersEditor {
                         {for v.iter().map(|s| {
                             if let Some(s) = s.to_iso() && flags::has_flag(s.alpha2) {
                                 html! {
-                                    <span class={classes!("item-inline", "flag", s.alpha2)} title={s.name} />
+                                    <span class={classes!(class::ITEM_INLINE, class::FLAG, s.alpha2)} title={s.name} />
                                 }
                             } else {
                                 html! {
-                                    <span class="item-inline">{s.to_string()}</span>
+                                    <span class={class::ITEM_INLINE}>{s.to_string()}</span>
                                 }
                             }
                         })}
@@ -352,19 +353,19 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="sockel-cluster sockel-between sockel-loose">
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
                     <ReorderHandle />
 
                     <input
-                        class={classes!(sockel::class::INPUT, "fill")}
+                        class={classes!(sockel::class::INPUT, class::FILL)}
                         type="text"
                         placeholder={format!("Rule {}", index + 1)}
                         value={rule.name.clone()}
                         onchange={on_name}
                     />
 
-                    <div class="input-group">
-                        <Button icon="trash" variant={Variant::Danger} title="Remove rule" onclick={on_remove} />
+                    <div class={class::INPUT_GROUP}>
+                        <Button icon={class::ICON_TRASH} variant={Variant::Danger} title="Remove rule" onclick={on_remove} />
                     </div>
                 </div>
 
@@ -401,8 +402,8 @@ impl FiltersEditor {
         };
 
         html! {
-            <div class="input-group sockel-cluster sockel-nowrap">
-                <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, "fill")} onchange={on_add}>
+            <div class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP)}>
+                <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, class::FILL)} onchange={on_add}>
                     <option value="" selected={true}>{"Add predicate…"}</option>
 
                     {for available.iter().enumerate().map(|(i, kind)| html! {
@@ -433,10 +434,10 @@ impl FiltersEditor {
 
         html! {
             <input-label-controls>
-                <span class="input-group">
-                    <span class="input-label has-text fill">{p.kind().label()}</span>
+                <span class={class::INPUT_GROUP}>
+                    <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT, class::FILL)}>{p.kind().label()}</span>
 
-                    <Button icon="trash" title="Remove predicate" variant={Variant::Danger} onclick={on_remove} />
+                    <Button icon={class::ICON_TRASH} title="Remove predicate" variant={Variant::Danger} onclick={on_remove} />
                 </span>
 
                 <controls>
@@ -479,7 +480,7 @@ impl FiltersEditor {
 
                         html! {
                             <Button role="switch" checked={Some(checked)} title={source.as_label()} onclick={on_toggle}>
-                                <span class={classes!("logo", source.as_id())} />
+                                <span class={classes!(class::LOGO, class::logo(source.as_id()))} />
                             </Button>
                         }
                     })}
@@ -560,7 +561,7 @@ impl FiltersEditor {
                 };
 
                 html! {
-                    <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
+                    <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
                 }
             }
         }

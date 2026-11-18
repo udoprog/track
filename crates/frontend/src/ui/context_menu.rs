@@ -3,6 +3,7 @@
 //! Focus moves to its first control and Tab stays inside; Escape or a press
 //! outside closes it, and focus goes back. Phones show it as a sheet.
 
+use crate::class;
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -31,19 +32,19 @@ pub(crate) fn ContextMenu(props: &Props) -> Html {
     html! {
         <sockel::Popover anchor={props.anchor.clone()} open=true {title} head=false trap=true focus_first=true
             on_dismiss={props.on_close.reform(|_| ())} testid="context-menu">
-            <div class="sockel-stack sockel-loose">
+            <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)}>
                 if let Some(prompt) = &props.prompt {
-                    <div class="sockel-cluster sockel-snug">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::SNUG)}>
                         if let Some(icon) = &props.icon {
-                            <span class="item-inline" aria-hidden="true">
-                                <span class={classes!("icon", icon.clone())} aria-hidden="true" />
+                            <span class={class::ITEM_INLINE} aria-hidden="true">
+                                <span class={classes!(class::ICON, icon.clone())} aria-hidden="true" />
                             </span>
                         }
 
                         <span>{prompt.clone()}</span>
 
                         if let Some(label) = &props.label {
-                            <span><span class="context-menu-label">{label.clone()}</span>{"?"}</span>
+                            <span><span class={class::CONTEXT_MENU_LABEL}>{label.clone()}</span>{"?"}</span>
                         }
                     </div>
                 }

@@ -2,6 +2,7 @@ use web_sys::MouseEvent;
 use yew::prelude::*;
 
 use super::{Button, LanguageModal, Variant, locale_label};
+use crate::class;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -63,7 +64,7 @@ impl Component for SyncLanguagesEditor {
 
         html! {
             <>
-                <div class="table">
+                <div class={class::TABLE}>
                     {
                         for props.languages.iter().copied().enumerate().map(|(index, l)| {
                             let on_remove = {
@@ -79,24 +80,24 @@ impl Component for SyncLanguagesEditor {
                             let (label, flag) = locale_label(l, "Default Language");
 
                             html! {
-                                <div key={l.to_string()} class="sockel-cluster sockel-nowrap sockel-loose">
-                                    <span class="fill">{label}</span>
+                                <div key={l.to_string()} class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                                    <span class={class::FILL}>{label}</span>
 
                                     if let Some(flag) = flag {
-                                        <span class={classes!("item-inline", "flag", flag)} />
+                                        <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} />
                                     } else {
-                                        <span class="item-inline"><span class="icon language" aria-hidden="true" /></span>
+                                        <span class={class::ITEM_INLINE}><span class={classes!(class::ICON, class::ICON_LANGUAGE)} aria-hidden="true" /></span>
                                     }
 
-                                    <Button icon="trash" variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />
+                                    <Button icon={class::ICON_TRASH} variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />
                                 </div>
                             }
                         })
                     }
                 </div>
 
-                <div class="sockel-cluster sockel-nowrap sockel-loose">
-                    <Button icon="plus" label="Add language" title="Add language" onclick={link.callback(|_| Msg::Open)} />
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                    <Button icon={class::ICON_PLUS} label="Add language" title="Add language" onclick={link.callback(|_| Msg::Open)} />
                 </div>
 
                 if self.open {

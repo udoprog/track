@@ -1,3 +1,4 @@
+use crate::class;
 use sockel::{Menu, MenuRadio, PopoverAlign};
 use yew::prelude::*;
 
@@ -28,8 +29,8 @@ pub(crate) fn SortMenu(props: &Props) -> Html {
     };
 
     html! {
-        <Menu text={html! { label }} icon={html! { <span class="icon arrows-up-down" /> }}
-            title="Sort by" label="Sort by" opener_class={classes!("chip", (*open).then_some("selected"))}
+        <Menu text={html! { label }} icon={html! { <span class={classes!(class::ICON, class::ICON_ARROWS_UP_DOWN)} /> }}
+            title="Sort by" label="Sort by" opener_class={classes!(class::CHIP, (*open).then_some(class::SELECTED))}
             align={PopoverAlign::Start} sheet=true
             open={Some(*open)} {on_toggle} testid="sort-menu">
             { for props.options.iter().map(|&(value, label)| {

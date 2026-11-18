@@ -1,8 +1,20 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::ui::Pager;
 
 use super::{Button, Image, Variant};
+
+/// The gallery's modifier class for a kind of image, if it has one.
+fn kind_class(kind: api::ImageKind) -> Option<&'static str> {
+    match kind {
+        api::ImageKind::Poster => Some(class::POSTER),
+        api::ImageKind::Banner => Some(class::BANNER),
+        api::ImageKind::Backdrop => Some(class::BACKDROP),
+        api::ImageKind::Screenshot => Some(class::SCREENSHOT),
+        api::ImageKind::Profile | api::ImageKind::Unknown => None,
+    }
+}
 
 /// How many images of a kind fit a page of the gallery.
 fn page_size(kind: api::ImageKind) -> usize {
@@ -64,30 +76,30 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
 
     html! {
         <>
-            <div class="sockel-cluster sockel-between sockel-loose">
+            <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
                 <h2>{props.kind.title()}</h2>
 
-                <div class="sockel-cluster sockel-nowrap sockel-loose">
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                     if let Some(on_pick_best) = &props.on_pick_best {
-                        <Button icon="sparkles" variant={Variant::Primary} title={format!("Pick best {}", props.kind)} label="Pick best" onclick={on_pick_best.reform(|_| ())} />
+                        <Button icon={class::ICON_SPARKLES} variant={Variant::Primary} title={format!("Pick best {}", props.kind)} label="Pick best" onclick={on_pick_best.reform(|_| ())} />
                     }
                     if props.user_selected {
                         if let Some(on_reset) = &props.on_reset {
-                            <Button icon="arrow-uturn-left" title={format!("Clear custom {}", props.kind)} label="Clear custom" onclick={on_reset.reform(|_| ())} />
+                            <Button icon={class::ICON_ARROW_UTURN_LEFT} title={format!("Clear custom {}", props.kind)} label="Clear custom" onclick={on_reset.reform(|_| ())} />
                         }
                     }
-                    <Button icon="x-mark" title={format!("Clear {}", props.kind)} label="Clear" onclick={on_clear} />
+                    <Button icon={class::ICON_X_MARK} title={format!("Clear {}", props.kind)} label="Clear" onclick={on_clear} />
                 </div>
             </div>
 
-            <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+            <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                 <Pager page={this_page} pages={total_pages} on_page={on_page} />
             </div>
 
             if props.items.is_empty() {
-                <div class="text-muted">{"No images"}</div>
+                <div class={class::TEXT_MUTED}>{"No images"}</div>
             } else {
-                <div class={classes!("image-gallery", props.kind.as_str())}>
+                <div class={classes!(class::IMAGE_GALLERY, kind_class(props.kind))}>
                     { for page_images.iter().map(|img| {
                         let id = img.id;
                         let selected = img.selected;
@@ -96,14 +108,14 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                         let title = img.source.to_string();
 
                         html! {
-                            <div class="gallery-cell">
-                                <Button class="gallery-pick" title={format!("Use this {} from {title}", props.kind)} pressed={Some(selected)} onclick={Callback::from(move |_| on_select.emit(id))}>
-                                    <Image class={classes!(selected.then_some("selected"))} src={img.image.clone()} />
+                            <div class={class::GALLERY_CELL}>
+                                <Button class={class::GALLERY_PICK} title={format!("Use this {} from {title}", props.kind)} pressed={Some(selected)} onclick={Callback::from(move |_| on_select.emit(id))}>
+                                    <Image class={classes!(selected.then_some(class::SELECTED))} src={img.image.clone()} />
                                 </Button>
-                                <div class="gallery-meta">
-                                    <span class={classes!("logo", source)} title={title} />
+                                <div class={class::GALLERY_META}>
+                                    <span class={classes!(class::LOGO, class::logo(source))} title={title} />
                                     if selected {
-                                        <span class="badge">{"Current"}</span>
+                                        <span class={class::BADGE}>{"Current"}</span>
                                     }
                                 </div>
                             </div>

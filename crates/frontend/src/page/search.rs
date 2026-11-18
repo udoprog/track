@@ -459,11 +459,11 @@ impl Search {
                         { for row.sources.iter().map(|(source, url)| html! {
                             if let Some(url) = url {
                                 <a class={class::SEARCH_SOURCE} href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>
-                                    <span class={classes!(class::LOGO, source.as_id())} aria-hidden="true" />
+                                    <span class={classes!(class::LOGO, class::logo(source.as_id()))} aria-hidden="true" />
                                 </a>
                             } else {
                                 <span class={class::SEARCH_SOURCE} title={source.to_string()}>
-                                    <span class={classes!(class::LOGO, source.as_id())} aria-hidden="true" />
+                                    <span class={classes!(class::LOGO, class::logo(source.as_id()))} aria-hidden="true" />
                                 </span>
                             }
                         }) }

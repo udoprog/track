@@ -1,6 +1,7 @@
 use web_sys::InputEvent;
 use yew::prelude::*;
 
+use crate::class;
 use crate::ui::Pager;
 
 use crate::flags;
@@ -142,10 +143,10 @@ impl Component for CountryPicker {
         let current = &ctx.props().current;
 
         let trigger = html! {
-            <Button icon="globe-alt" label={if current.is_empty() { String::from("All countries") } else { format!("{} selected", current.len()) }} title="Select countries" onclick={link.callback(|_| Msg::Open)}>
+            <Button icon={class::ICON_GLOBE_ALT} label={if current.is_empty() { String::from("All countries") } else { format!("{} selected", current.len()) }} title="Select countries" onclick={link.callback(|_| Msg::Open)}>
                 {for current.iter().filter_map(|code| {
                     code.to_iso().filter(|c| flags::has_flag(c.alpha2)).map(|c| html! {
-                        <span class={classes!("flag", c.alpha2)} />
+                        <span class={classes!(class::FLAG, c.alpha2)} />
                     })
                 })}
             </Button>
@@ -170,15 +171,15 @@ impl Component for CountryPicker {
             let selected = current.contains(&code);
 
             html! {
-                <Button key={code} class={classes!("clickable", "sockel-cluster", "sockel-nowrap", "sockel-loose", selected.then_some("active"))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
-                    <span class="fill">{country.name}</span>
+                <Button key={code} class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, selected.then_some(class::ACTIVE))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
+                    <span class={class::FILL}>{country.name}</span>
 
                     if let Some(c) = code.to_iso().filter(|c| flags::has_flag(c.alpha2)) {
-                        <span class={classes!("item-inline", "flag", c.alpha2)} />
+                        <span class={classes!(class::ITEM_INLINE, class::FLAG, c.alpha2)} />
                     }
 
-                    <span class="item-inline" title={code}>
-                        <span class={classes!("icon", if selected { "check" } else { "x-mark" })} />
+                    <span class={class::ITEM_INLINE} title={code}>
+                        <span class={classes!(class::ICON, if selected { class::ICON_CHECK } else { class::ICON_X_MARK })} />
                     </span>
                 </Button>
             }
@@ -188,21 +189,21 @@ impl Component for CountryPicker {
             <>
                 {trigger}
 
-                <Modal icon="globe-alt" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
-                    <div class="sockel-cluster sockel-nowrap sockel-loose">
-                        <input class={classes!(sockel::class::INPUT, "fill")} type="text" autofocus={true} placeholder="Filter" aria-label="Filter countries" value={self.filter.clone()} oninput={on_filter} />
+                <Modal icon={class::ICON_GLOBE_ALT} title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                        <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" autofocus={true} placeholder="Filter" aria-label="Filter countries" value={self.filter.clone()} oninput={on_filter} />
                     </div>
 
-                    <div class="table">
-                        <Button class="clickable sockel-cluster sockel-nowrap sockel-loose" title="All countries" pressed={Some(current.is_empty())} onclick={link.callback(|_| Msg::All)}>
-                            <span class="fill">{"All countries"}</span>
+                    <div class={class::TABLE}>
+                        <Button class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)} title="All countries" pressed={Some(current.is_empty())} onclick={link.callback(|_| Msg::All)}>
+                            <span class={class::FILL}>{"All countries"}</span>
 
-                            <span class="item-inline">
-                                <span class="icon globe-alt" aria-hidden="true" />
+                            <span class={class::ITEM_INLINE}>
+                                <span class={classes!(class::ICON, class::ICON_GLOBE_ALT)} aria-hidden="true" />
                             </span>
 
-                            <span class="item-inline">
-                                <span class={classes!("icon", if current.is_empty() { "check" } else { "x-mark" })} />
+                            <span class={class::ITEM_INLINE}>
+                                <span class={classes!(class::ICON, if current.is_empty() { class::ICON_CHECK } else { class::ICON_X_MARK })} />
                             </span>
                         </Button>
 
@@ -220,7 +221,7 @@ impl Component for CountryPicker {
                         }
                     </div>
 
-                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::Page)} />
                     </div>
                 </Modal>

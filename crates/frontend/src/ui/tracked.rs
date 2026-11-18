@@ -1,5 +1,6 @@
 use yew::prelude::*;
 
+use crate::class;
 use crate::ui::Button;
 
 #[derive(Properties, PartialEq)]
@@ -16,7 +17,7 @@ pub(crate) fn Tracked(props: &Props) -> Html {
 
     html! {
         <Button
-            icon={if tracked { "eye" } else { "eye-slash" }}
+            icon={if tracked { class::ICON_EYE } else { class::ICON_EYE_SLASH }}
             title={format!("{} {}", if tracked { "Tracking" } else { "Not tracking" }, props.kind)}
             pressed={Some(tracked)}
             text={if tracked { "Tracking" } else { "Not tracking" }}

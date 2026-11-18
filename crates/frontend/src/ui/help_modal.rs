@@ -1,6 +1,7 @@
 use web_sys::{Element, HtmlInputElement, ScrollIntoViewOptions, ScrollLogicalPosition};
 use yew::prelude::*;
 
+use crate::class;
 use crate::help;
 use crate::ui::markdown::{self, Highlight};
 use crate::ui::{Button, Modal};
@@ -87,9 +88,9 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
     };
 
     html! {
-        <Modal icon="question-mark-circle" title="Help" size={sockel::DialogSize::WideTall} flush=true on_close={props.on_close.clone()}>
-            <div class="help" data-test="help">
-                <nav class="help-nav" aria-label="Help sections">
+        <Modal icon={class::ICON_QUESTION_MARK_CIRCLE} title="Help" size={sockel::DialogSize::WideTall} flush=true on_close={props.on_close.clone()}>
+            <div class={class::HELP} data-test="help">
+                <nav class={class::HELP_NAV} aria-label="Help sections">
                     <input
                         type="search"
                         class={sockel::class::INPUT}
@@ -100,13 +101,13 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                         {oninput}
                     />
 
-                    <div class="help-sections sockel-stack sockel-tight">
+                    <div class={classes!(class::HELP_SECTIONS, sockel::class::STACK, sockel::class::TIGHT)}>
                         { for found.iter().map(|section| {
                             let selected = shown.is_some_and(|s| s.id == section.id);
 
                             html! {
                                 <Button
-                                    class={classes!("help-section", selected.then_some("selected"))}
+                                    class={classes!(class::HELP_SECTION, selected.then_some(class::SELECTED))}
                                     title={section.title.clone()}
                                     current={selected}
                                     onclick={select(&section.id)}
@@ -118,12 +119,12 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                     </div>
                 </nav>
 
-                <article class="help-body" ref={body} data-section={shown.map(|s| s.id.clone())}>
+                <article class={class::HELP_BODY} ref={body} data-section={shown.map(|s| s.id.clone())}>
                     if let Some(section) = shown {
                         <h3 data-test="help-title">{section.title.clone()}</h3>
                         { markdown::render(&section.body, &go, Some(&highlight)) }
                     } else {
-                        <p class="text-muted" data-test="help-empty">{format!("No help mentions “{}”.", query.trim())}</p>
+                        <p class={class::TEXT_MUTED} data-test="help-empty">{format!("No help mentions “{}”.", query.trim())}</p>
                     }
                 </article>
             </div>

@@ -3,6 +3,7 @@ use yew::prelude::*;
 use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::Button;
+use crate::class;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -39,13 +40,13 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class={classes!("form", "numberings")} {on_move} quick_keys=true titles=true>
+        <Reorder class={classes!(class::FORM, "numberings")} {on_move} quick_keys=true titles=true>
             {
                 for prefs.iter().enumerate().map(|(index, pref)| {
                     let label = api::xem_system_label(&pref.system);
                     let shown = pref.shown;
                     // A hidden numbering's row is quieter.
-                    let dim = classes!((!shown).then_some("dim"));
+                    let dim = classes!((!shown).then_some(class::DIM));
 
                     let on_toggle = {
                         let prefs = prefs.clone();
@@ -57,23 +58,23 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                     };
 
                     html_nested! {
-                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!("input-group", "sockel-cluster", "sockel-nowrap", (!shown).then_some("numbering-hidden"))}>
+                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP, (!shown).then_some("numbering-hidden"))}>
                             <ReorderHandle class={dim.clone()} />
 
-                            <span class={classes!("input-label", "has-text", dim.clone())}>
-                                <span class={classes!("logo", pref.system.clone())} data-system={pref.system.clone()} />
+                            <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT, dim.clone())}>
+                                <span class={classes!(class::LOGO, class::logo(&pref.system))} data-system={pref.system.clone()} />
                             </span>
 
-                            <span class={classes!("input-label", "has-text", "grow", "sockel-cluster", "sockel-tight", dim.clone())}>
+                            <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT, class::GROW, sockel::class::CLUSTER, sockel::class::TIGHT, dim.clone())}>
                                 <span>{label}</span>
 
                                 if let Some(description) = description(&pref.system) {
-                                    <span class="text-muted">{description}</span>
+                                    <span class={class::TEXT_MUTED}>{description}</span>
                                 }
                             </span>
 
                             <Button
-                                icon={if shown { "check" } else { "x-mark" }}
+                                icon={if shown { class::ICON_CHECK } else { class::ICON_X_MARK }}
                                 label={if shown { "Shown" } else { "Hidden" }}
                                 title={format!("{} {label} numbers on episodes", if shown { "Showing" } else { "Hiding" })}
                                 pressed={Some(shown)}

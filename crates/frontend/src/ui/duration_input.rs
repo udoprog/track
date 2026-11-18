@@ -1,3 +1,4 @@
+use crate::class;
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -89,7 +90,7 @@ impl Component for DurationInput {
 
         html! {
             <>
-                <input type="number" class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC, "fill")} min="0" step="any" value={self.amount.clone()} onchange={on_amount} />
+                <input type="number" class={classes!(sockel::class::INPUT, class::INPUT_NUMBER, sockel::class::NUMERIC, class::FILL)} min="0" step="any" value={self.amount.clone()} onchange={on_amount} />
 
                 <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} onchange={on_unit} value={self.unit.as_str()}>
                     { for api::DurationUnit::ALL.into_iter().map(|unit| html! {

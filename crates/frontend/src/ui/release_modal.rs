@@ -7,6 +7,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::flags;
 
@@ -132,7 +133,7 @@ impl Component for ReleaseModal {
         let title = ctx.props().title.clone();
 
         html! {
-            <Modal icon="calendar" title={title} on_close={on_close}>
+            <Modal icon={class::ICON_CALENDAR} title={title} on_close={on_close}>
                 { self.view_filters(ctx) }
                 { self.view_content(ctx) }
             </Modal>
@@ -435,7 +436,7 @@ impl ReleaseModal {
                     </select>
                 </FormRow>
 
-                <div class="form-wide">
+                <div class={class::FORM_WIDE}>
                     <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
                 </div>
             </div>
@@ -444,11 +445,11 @@ impl ReleaseModal {
 
     fn view_content(&self, ctx: &Context<Self>) -> Html {
         let Some(rows) = self.rows.as_ref() else {
-            return html!(<div class="text-muted">{"Loading…"}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"Loading…"}</div>);
         };
 
         if rows.is_empty() {
-            return html!(<div class="text-muted">{"No releases recorded."}</div>);
+            return html!(<div class={class::TEXT_MUTED}>{"No releases recorded."}</div>);
         }
 
         // The server orders rows so equal labels are contiguous; group them while
@@ -463,7 +464,7 @@ impl ReleaseModal {
         }
 
         html! {
-            <div class="release-rows">
+            <div class={class::RELEASE_ROWS}>
                 { for groups.into_iter().map(|(label, releases)| self.view_group(ctx, label, releases)) }
             </div>
         }
@@ -486,8 +487,8 @@ impl ReleaseModal {
 
         html! {
             <>
-                <Button class="release-row release-group" title={format!("Show all dates from {label}")} expanded={Some(expanded)} onclick={on_toggle}>
-                    <span class={classes!("icon", "sm", if expanded { "chevron-down" } else { "chevron-right" })} aria-hidden="true" />
+                <Button class={classes!(class::RELEASE_ROW, class::RELEASE_GROUP)} title={format!("Show all dates from {label}")} expanded={Some(expanded)} onclick={on_toggle}>
+                    <span class={classes!(class::ICON, class::SM, if expanded { class::ICON_CHEVRON_DOWN } else { class::ICON_CHEVRON_RIGHT })} aria-hidden="true" />
 
                     {indicator(group_considered)}
 
@@ -499,9 +500,9 @@ impl ReleaseModal {
                         <span />
                     }
 
-                    <span class="release-label sockel-truncate">{label.clone()}</span>
+                    <span class={classes!("release-label", sockel::class::TRUNCATE)}>{label.clone()}</span>
 
-                    <span class="release-date sockel-numeric">
+                    <span class={classes!(class::RELEASE_DATE, sockel::class::NUMERIC)}>
                         if let Some(earliest) = earliest {
                             {earliest.timestamp.human_date_time(self.time.clone())}
                         }
@@ -517,7 +518,7 @@ impl ReleaseModal {
 
     fn view_row(&self, r: &api::ReleaseRow) -> Html {
         html! {
-            <div class="release-row">
+            <div class={class::RELEASE_ROW}>
                 <span />
 
                 {indicator(r.considered)}
@@ -526,7 +527,7 @@ impl ReleaseModal {
 
                 <span />
 
-                <span class="release-date sockel-numeric">{r.timestamp.human_date_time(self.time.clone())}</span>
+                <span class={classes!(class::RELEASE_DATE, sockel::class::NUMERIC)}>{r.timestamp.human_date_time(self.time.clone())}</span>
             </div>
         }
     }
@@ -535,8 +536,8 @@ impl ReleaseModal {
 /// A release's source as its logo.
 fn view_source(source: api::RemoteSource) -> Html {
     html! {
-        <span class="item-inline" title={source.as_label()}>
-            <span class={classes!("logo", source.as_id())} />
+        <span class={class::ITEM_INLINE} title={source.as_label()}>
+            <span class={classes!(class::LOGO, class::logo(source.as_id()))} />
         </span>
     }
 }
@@ -565,18 +566,18 @@ fn view_country(country: api::Country) -> Html {
     }
 
     let Some(c) = country.to_iso() else {
-        return html! { <span class="text-muted">{country}</span> };
+        return html! { <span class={class::TEXT_MUTED}>{country}</span> };
     };
 
     if flags::has_flag(c.alpha2) {
         html! {
-            <span class="item-inline" title={c.name}>
-                <span class={classes!("flag", c.alpha2)}></span>
+            <span class={class::ITEM_INLINE} title={c.name}>
+                <span class={classes!(class::FLAG, c.alpha2)}></span>
             </span>
         }
     } else {
         html! {
-            <span class="text-muted">
+            <span class={class::TEXT_MUTED}>
                 <span class={c.name}></span>
             </span>
         }
@@ -586,14 +587,17 @@ fn view_country(country: api::Country) -> Html {
 /// Whether a release is considered, as a check/minus indicator.
 fn indicator(on: bool) -> Html {
     let (icon, title) = if on {
-        ("check", "Considered for the release date")
+        (class::ICON_CHECK, "Considered for the release date")
     } else {
-        ("minus", "Excluded by the current release date settings")
+        (
+            class::ICON_MINUS,
+            "Excluded by the current release date settings",
+        )
     };
 
     html! {
-        <span class={classes!("item-inline", (!on).then_some("text-muted"))} title={title}>
-            <span class={classes!("icon", icon)} aria-hidden="true" />
+        <span class={classes!(class::ITEM_INLINE, (!on).then_some(class::TEXT_MUTED))} title={title}>
+            <span class={classes!(class::ICON, icon)} aria-hidden="true" />
         </span>
     }
 }
