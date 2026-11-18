@@ -20,7 +20,11 @@ const CAST: [&str; 8] = [
 async fn open_cast_modal(driver: &TestDriver) -> Result<()> {
     super::show::open_show(driver).await?;
 
-    driver.find_one_by(".credits-toggle").await?.click().await?;
+    driver
+        .find_one_by(".track-credits-toggle")
+        .await?
+        .click()
+        .await?;
 
     driver.find_one_by("[data-testid=cast-modal]").await?;
     Ok(())
@@ -32,11 +36,11 @@ pub async fn opens_the_full_cast_in_a_modal(driver: &mut TestDriver, _: &mut Tra
     open_cast_modal(driver).await?;
 
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
+        .wait_texts("[data-testid=cast-modal] .track-cast-character", CAST)
         .await?;
     ensure!(
         driver
-            .count("[data-testid=credits] > .cast-grid .cast-card")
+            .count("[data-testid=credits] > .track-cast-grid .track-cast-card")
             .await?
             == 6,
         "the page's cast grid grew past its cap"
@@ -67,7 +71,10 @@ pub async fn search_filters_by_person_and_character(
 
     search.send_keys("hopper").await?;
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-name", ["Grace Hopper"])
+        .wait_texts(
+            "[data-testid=cast-modal] .track-cast-name",
+            ["Grace Hopper"],
+        )
         .await?;
 
     // Named only in Swedish, and credited for two parts.
@@ -75,7 +82,7 @@ pub async fn search_filters_by_person_and_character(
     search.send_keys("garbo").await?;
     driver
         .wait_texts(
-            "[data-testid=cast-modal] .cast-name",
+            "[data-testid=cast-modal] .track-cast-name",
             ["Greta Garbo", "Greta Garbo"],
         )
         .await?;
@@ -83,12 +90,15 @@ pub async fn search_filters_by_person_and_character(
     search.send_keys(&BACKSPACE.repeat(5)).await?;
     search.send_keys("the narrator").await?;
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-character", ["The Narrator"])
+        .wait_texts(
+            "[data-testid=cast-modal] .track-cast-character",
+            ["The Narrator"],
+        )
         .await?;
 
     search.send_keys(" nobody").await?;
     driver
-        .wait_count("[data-testid=cast-modal] .cast-card", 0)
+        .wait_count("[data-testid=cast-modal] .track-cast-card", 0)
         .await?;
     driver
         .wait_texts(
@@ -99,7 +109,7 @@ pub async fn search_filters_by_person_and_character(
 
     search.send_keys(&BACKSPACE.repeat(19)).await?;
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
+        .wait_texts("[data-testid=cast-modal] .track-cast-character", CAST)
         .await
 }
 
@@ -111,7 +121,7 @@ pub async fn phone_cast_modal_fits_the_screen(
     driver.set_window_size(400, 850).await?;
     open_cast_modal(driver).await?;
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
+        .wait_texts("[data-testid=cast-modal] .track-cast-character", CAST)
         .await?;
 
     let modal = driver
@@ -156,28 +166,34 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
     _: &mut Track,
 ) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Seeded Movie", "Seeded Show"])
         .await?;
     driver
-        .find_nth(".media-card .media-poster", 0)
+        .find_nth(".track-media-card .track-media-poster", 0)
         .await?
         .click()
         .await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
 
-    driver.find_one_by(".credits-toggle").await?.click().await?;
+    driver
+        .find_one_by(".track-credits-toggle")
+        .await?
+        .click()
+        .await?;
     driver.find_one_by("[data-testid=cast-modal]").await?;
     driver
-        .wait_count("[data-testid=cast-modal] .cast-card", 9)
+        .wait_count("[data-testid=cast-modal] .track-cast-card", 9)
         .await?;
     ensure!(
         driver
-            .count("[data-testid=credits] > .cast-grid .cast-card")
+            .count("[data-testid=credits] > .track-cast-grid .track-cast-card")
             .await?
             == 8,
         "the page's cast grid grew past its cap"
@@ -190,7 +206,10 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
     let search = driver.find_one_by("[data-test=cast-search]").await?;
     search.send_keys("compiler").await?;
     driver
-        .wait_texts("[data-testid=cast-modal] .cast-name", ["Frances Allen"])
+        .wait_texts(
+            "[data-testid=cast-modal] .track-cast-name",
+            ["Frances Allen"],
+        )
         .await?;
 
     search.send_keys(ESCAPE).await?;

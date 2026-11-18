@@ -569,10 +569,10 @@ fn view_country(country: api::Country) -> Html {
         return html! { <span class={class::TEXT_MUTED}>{country}</span> };
     };
 
-    if flags::has_flag(c.alpha2) {
+    if let Some(flag) = flags::flag_class(c.alpha2) {
         html! {
             <span class={class::ITEM_INLINE} title={c.name}>
-                <span class={classes!(class::FLAG, c.alpha2)}></span>
+                <span class={classes!(class::FLAG, flag)}></span>
             </span>
         }
     } else {

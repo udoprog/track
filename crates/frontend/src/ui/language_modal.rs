@@ -35,7 +35,7 @@ pub(crate) fn locale_label(
         Cow::Owned(locale.display_name().to_string())
     };
 
-    (name, locale.flag().filter(|flag| flags::has_flag(flag)))
+    (name, locale.flag().and_then(flags::flag_class))
 }
 
 /// Every selectable locale: a language-only "any country" row for each language

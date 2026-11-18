@@ -39,11 +39,11 @@ button {
 
     // Not sockel's drag handles, which grab and keep their edge (:where, so
     // this weighs what it did without them).
-    &:not(.track-disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
+    &:not(:disabled):where(:not(.sockel-drag-handle)) {
         cursor: pointer;
     }
 
-    &:hover:not(.track-disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
+    &:hover:not(:disabled):where(:not(.sockel-drag-handle)) {
         border-color: v.$color-primary;
     }
 
@@ -81,7 +81,7 @@ button {
         }
     }
 
-    &.track-disabled, &:disabled {
+    &:disabled {
         opacity: 0.5;
         cursor: default;
     }

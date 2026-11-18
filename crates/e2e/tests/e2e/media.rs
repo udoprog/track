@@ -8,17 +8,21 @@ use super::{Track, kept_marked, mark};
 /// it has been watched.
 pub async fn shows_a_poster_grid(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
-    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
     driver
-        .find_one_by(".media-card .media-poster image")
+        .wait_texts(".track-media-title", ["Seeded Show"])
+        .await?;
+    driver
+        .find_one_by(".track-media-card .track-media-poster image")
         .await?;
 
-    let meta = driver.find_all_texts(".media-card .media-meta").await?;
+    let meta = driver
+        .find_all_texts(".track-media-card .track-media-meta")
+        .await?;
 
     ensure!(
         meta.iter().any(|m| m == "2023") && meta.iter().any(|m| m == "Not watched"),
@@ -33,12 +37,14 @@ pub async fn shows_a_poster_grid(driver: &mut TestDriver, _: &mut Track) -> Resu
 /// toolbar's Disconnected icon, not an error.
 pub async fn reloads_after_a_reconnect(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
-    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-media-title", ["Seeded Show"])
+        .await?;
     driver
         .webdriver()
         .execute("window.__same_page = true;", Vec::new())
@@ -57,7 +63,7 @@ pub async fn reloads_after_a_reconnect(driver: &mut TestDriver, track: &mut Trac
         .wait_until_within(
             Duration::from_secs(10),
             "the media page to show the renamed show",
-            async || Ok(driver.find_all_texts(".media-title").await? == ["Renamed Show"]),
+            async || Ok(driver.find_all_texts(".track-media-title").await? == ["Renamed Show"]),
         )
         .await?;
 
@@ -76,17 +82,23 @@ pub async fn reloads_after_a_reconnect(driver: &mut TestDriver, track: &mut Trac
 /// a phone too.
 pub async fn toggle_marks_are_icon_sized(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
-    driver.find_one_by(".toolbar-toggle").await?.click().await?;
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-toggle")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
 
-    driver.find_first("[role=switch] .icon").await?;
-    let marks = driver.find_all(By::Css("[role=switch] .icon")).await?;
+    driver.find_first("[role=switch] .track-icon").await?;
+    let marks = driver
+        .find_all(By::Css("[role=switch] .track-icon"))
+        .await?;
 
     for mark in marks {
         let rect = mark.rect().await?;
@@ -110,7 +122,7 @@ pub async fn sort_stays_readable_at_tablet_width(
     driver.set_window_size(860, 900).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
@@ -122,7 +134,11 @@ pub async fn sort_stays_readable_at_tablet_width(
         chip.text().await?
     );
     let sort = chip.rect().await?;
-    let filter = driver.find_one_by(".search-field").await?.rect().await?;
+    let filter = driver
+        .find_one_by(".track-search-field")
+        .await?
+        .rect()
+        .await?;
 
     ensure!(
         sort.height <= 40.0,
@@ -140,32 +156,34 @@ pub async fn sort_stays_readable_at_tablet_width(
 /// A show with aired episodes still to watch carries a yellow watched mark;
 /// once every regular episode is watched the mark is the plain one.
 pub async fn partly_watched_shows_are_marked(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".pending-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-pending-title", ["Seeded Show"])
+        .await?;
 
     // Watch the first episode from the dashboard, then look at Media.
     driver
-        .find_one_by(".pending-item [title='Mark watched']")
+        .find_one_by(".track-pending-item [title='Mark watched']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".pending-label", ["S01E02 Second Episode"])
+        .wait_texts(".track-pending-label", ["S01E02 Second Episode"])
         .await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
-    const BADGE: &str = ".media-card .media-badge";
+    const BADGE: &str = ".track-media-card .track-media-badge";
 
     driver
         .wait_until("the partly watched badge", async || {
             let titles = driver.find_all_attrs(BADGE, "title").await?;
             let classes = driver.find_all_attrs(BADGE, "class").await?;
             Ok(titles == ["Partly watched: 2 episodes to go"]
-                && classes.iter().all(|c| c.contains("partial")))
+                && classes.iter().all(|c| c.contains("track-partial")))
         })
         .await?;
     Ok(())
@@ -174,16 +192,16 @@ pub async fn partly_watched_shows_are_marked(driver: &mut TestDriver, _: &mut Tr
 /// Reversing the order moves the cards instead of refilling each one with
 /// another title.
 pub async fn reversing_keeps_the_cards(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    const CARDS: &str = ".media-card";
+    const CARDS: &str = ".track-media-card";
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver.find_first(CARDS).await?;
 
-    let titles = driver.rendered_texts(".media-title").await?;
+    let titles = driver.rendered_texts(".track-media-title").await?;
     let marked = mark(driver, CARDS).await?;
 
     driver
@@ -194,7 +212,7 @@ pub async fn reversing_keeps_the_cards(driver: &mut TestDriver, _: &mut Track) -
 
     driver
         .wait_until("the order to reverse", async || {
-            let mut now = driver.rendered_texts(".media-title").await?;
+            let mut now = driver.rendered_texts(".track-media-title").await?;
             now.reverse();
             Ok(now == titles)
         })
@@ -211,11 +229,13 @@ pub async fn reversing_keeps_the_cards(driver: &mut TestDriver, _: &mut Track) -
 /// A fresh visit lists only what the user tracks; All shows the rest.
 pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-media-title", ["Seeded Show"])
+        .await?;
 
     driver
         .find_one_by("[title='Showing: Tracked']")
@@ -223,7 +243,7 @@ pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Tra
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Untracked Show"])
+        .wait_texts(".track-media-title", ["Untracked Show"])
         .await?;
 
     driver
@@ -232,7 +252,7 @@ pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Tra
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Seeded Show", "Untracked Show"])
+        .wait_texts(".track-media-title", ["Seeded Show", "Untracked Show"])
         .await?;
 
     let url = driver.webdriver().current_url().await?;
@@ -244,13 +264,13 @@ pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Tra
 /// regular seasons or the specials, hides movies, and survives a reload.
 pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".media-title",
+            ".track-media-title",
             [
                 "Finished Show",
                 "Rewatch Show",
@@ -267,7 +287,7 @@ pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> 
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Rewatch Show", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Rewatch Show", "Seeded Show"])
         .await?;
 
     driver
@@ -275,13 +295,17 @@ pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> 
         .await?
         .click()
         .await?;
-    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+    driver
+        .wait_texts(".track-media-title", ["Specials Show"])
+        .await?;
 
     let url = driver.webdriver().current_url().await?;
     ensure!(url.as_str().contains("next=specials"), "the URL is {url}");
 
     driver.reload().await?;
-    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+    driver
+        .wait_texts(".track-media-title", ["Specials Show"])
+        .await?;
     driver
         .find_one_by("[title='Next episode: specials']")
         .await?;
@@ -308,7 +332,9 @@ fn tracked_shows(track: &Track) -> Result<Vec<String>> {
 
 async fn mark_next(driver: &TestDriver) -> Result<()> {
     driver
-        .find_one_by(".selection-bar [title='Mark the next episode of the selected shows watched']")
+        .find_one_by(
+            ".track-selection-bar [title='Mark the next episode of the selected shows watched']",
+        )
         .await?
         .click()
         .await?;
@@ -327,13 +353,13 @@ pub async fn marks_the_next_episode_of_picked_shows(
     track: &mut Track,
 ) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".media-title",
+            ".track-media-title",
             [
                 "Finished Show",
                 "Rewatch Show",
@@ -355,18 +381,18 @@ pub async fn marks_the_next_episode_of_picked_shows(
         .await?;
 
     driver
-        .wait_texts(".selection-count", ["4 shows selected"])
+        .wait_texts(".track-selection-count", ["4 shows selected"])
         .await?;
-    ensure!(driver.count(".media-pick[aria-pressed=true]").await? == 4);
+    ensure!(driver.count(".track-media-pick[aria-pressed=true]").await? == 4);
     driver
-        .find_one_by(".selection-bar [title='From the regular seasons'][aria-pressed=true]")
+        .find_one_by(".track-selection-bar [title='From the regular seasons'][aria-pressed=true]")
         .await?;
 
     mark_next(driver).await?;
-    driver.wait_count(".selection-bar", 0).await?;
+    driver.wait_count(".track-selection-bar", 0).await?;
     driver
         .wait_texts(
-            ".toast .fill",
+            ".track-toast .track-fill",
             ["Marked the next episode of 2 shows; 2 shows had no next episode"],
         )
         .await?;
@@ -390,20 +416,20 @@ pub async fn marks_the_next_episode_of_picked_shows(
         .await?
         .click()
         .await?;
-    driver.wait_count(".toast", 0).await?;
+    driver.wait_count(".track-toast", 0).await?;
     driver
-        .find_one_by(".selection-bar [title='From the specials']")
+        .find_one_by(".track-selection-bar [title='From the specials']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".selection-bar [title='From the specials'][aria-pressed=true]")
+        .find_one_by(".track-selection-bar [title='From the specials'][aria-pressed=true]")
         .await?;
 
     mark_next(driver).await?;
     driver
         .wait_texts(
-            ".toast .fill",
+            ".track-toast .track-fill",
             ["Marked the next episode of 1 show; 1 show had no next episode"],
         )
         .await?;
@@ -423,7 +449,7 @@ async fn wait_picks(driver: &TestDriver, titles: &[&str]) -> Result<()> {
 
     driver
         .wait_until("the media cards", async || {
-            Ok(driver.find_all_attrs(".media-pick", "title").await? == expected)
+            Ok(driver.find_all_attrs(".track-media-pick", "title").await? == expected)
         })
         .await
 }
@@ -437,13 +463,13 @@ pub async fn picked_items_track_and_untrack(
     track: &mut Track,
 ) -> Result<()> {
     const MARK_NEXT: &str =
-        ".selection-bar [title='Mark the next episode of the selected shows watched']";
-    const MARK_MOVIES: &str = ".selection-bar [title='Mark the selected movies watched']";
-    const TRACK: &str = ".selection-bar [title='Track the selected items']";
-    const UNTRACK: &str = ".selection-bar [title='Stop tracking the selected items']";
+        ".track-selection-bar [title='Mark the next episode of the selected shows watched']";
+    const MARK_MOVIES: &str = ".track-selection-bar [title='Mark the selected movies watched']";
+    const TRACK: &str = ".track-selection-bar [title='Track the selected items']";
+    const UNTRACK: &str = ".track-selection-bar [title='Stop tracking the selected items']";
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
@@ -466,7 +492,7 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
     driver
-        .wait_texts(".selection-count", ["1 movie selected"])
+        .wait_texts(".track-selection-count", ["1 movie selected"])
         .await?;
     ensure!(driver.count(MARK_NEXT).await? == 0);
     ensure!(driver.count(MARK_MOVIES).await? == 1);
@@ -479,7 +505,7 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
     driver
-        .wait_texts(".selection-count", ["1 show and 1 movie selected"])
+        .wait_texts(".track-selection-count", ["1 show and 1 movie selected"])
         .await?;
     ensure!(driver.count(MARK_NEXT).await? == 1);
 
@@ -488,8 +514,8 @@ pub async fn picked_items_track_and_untrack(
         .await?
         .send_keys(ESCAPE)
         .await?;
-    driver.wait_count(".selection-bar", 0).await?;
-    ensure!(driver.count(".media-pick[aria-pressed=true]").await? == 0);
+    driver.wait_count(".track-selection-bar", 0).await?;
+    ensure!(driver.count(".track-media-pick[aria-pressed=true]").await? == 0);
 
     driver
         .find_one_by("[title='Select Finished Show']")
@@ -531,7 +557,7 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
     driver
-        .wait_texts(".selection-count", ["1 show selected"])
+        .wait_texts(".track-selection-count", ["1 show selected"])
         .await?;
     ensure!(driver.count(TRACK).await? == 1);
     ensure!(driver.count(UNTRACK).await? == 0);
@@ -544,7 +570,7 @@ pub async fn picked_items_track_and_untrack(
     ensure!(driver.count(UNTRACK).await? == 1);
 
     driver.find_one_by(TRACK).await?.click().await?;
-    driver.wait_count(".selection-bar", 0).await?;
+    driver.wait_count(".track-selection-bar", 0).await?;
     driver
         .wait_until("Finished Show to be tracked", async || {
             Ok(tracked_shows(track)? == ["Finished Show", "Seeded Show", "Specials Show"])
@@ -566,7 +592,7 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
     driver
-        .find_one_by(".selection-bar [title='From the specials'][aria-pressed=true]")
+        .find_one_by(".track-selection-bar [title='From the specials'][aria-pressed=true]")
         .await?;
     Ok(())
 }
@@ -574,11 +600,15 @@ pub async fn picked_items_track_and_untrack(
 /// A card's select control stays a circle on a phone.
 pub async fn phone_pick_control_is_round(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
-    driver.find_one_by(".toolbar-toggle").await?.click().await?;
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-toggle")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;

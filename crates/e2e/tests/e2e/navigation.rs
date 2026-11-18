@@ -4,40 +4,44 @@ use super::Track;
 
 /// The toolbar reaches every top-level page and marks the one showing.
 pub async fn opens_every_page(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
     driver
-        .wait_texts(".toolbar-item.active", ["Dashboard"])
+        .wait_texts(".track-toolbar-item.track-active", ["Dashboard"])
         .await?;
 
     for page in ["Media", "People", "Queue"] {
         driver
-            .find_one_by(&format!(".toolbar-item[title={page}]"))
+            .find_one_by(&format!(".track-toolbar-item[title={page}]"))
             .await?
             .click()
             .await?;
 
         wait_heading(driver, page).await?;
-        driver.wait_texts(".toolbar-item.active", [page]).await?;
+        driver
+            .wait_texts(".track-toolbar-item.track-active", [page])
+            .await?;
     }
 
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
 
     driver.find_one_by("[data-test=theme]").await?;
     driver
-        .wait_texts(".toolbar-item.active", ["Settings"])
+        .wait_texts(".track-toolbar-item.track-active", ["Settings"])
         .await?;
     Ok(())
 }
 
 /// Toolbar icons stay small next to their labels.
 pub async fn toolbar_icons_are_small(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
-    let icons = driver.find_all(By::Css(".toolbar-item .icon")).await?;
+    let icons = driver
+        .find_all(By::Css(".track-toolbar-item .track-icon"))
+        .await?;
     ensure!(!icons.is_empty(), "the toolbar has no icons");
 
     for icon in icons {
@@ -58,7 +62,7 @@ pub async fn page_scrolls_the_window(driver: &mut TestDriver, _: &mut Track) -> 
     driver.set_window_size(1000, 500).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
@@ -113,13 +117,13 @@ pub async fn every_button_has_a_title(driver: &mut TestDriver, _: &mut Track) ->
         "Settings",
     ] {
         driver
-            .find_one_by(&format!(".toolbar-item[title={page}]"))
+            .find_one_by(&format!(".track-toolbar-item[title={page}]"))
             .await?
             .click()
             .await?;
 
         driver
-            .wait_texts(".toolbar-item[aria-current=page]", [page])
+            .wait_texts(".track-toolbar-item[aria-current=page]", [page])
             .await?;
         untitled(driver, page).await?;
     }
@@ -160,7 +164,9 @@ pub async fn tab_shows_a_focus_ring(driver: &mut TestDriver, _: &mut Track) -> R
 /// Whether nothing in the page content is clickable without being a button or
 /// a link.
 async fn only_buttons_and_links_click(driver: &TestDriver) -> Result<()> {
-    let stray = driver.count("#content .clickable:not(button, a)").await?;
+    let stray = driver
+        .count("#content .track-clickable:not(button, a)")
+        .await?;
     ensure!(
         stray == 0,
         "{stray} clickable elements are neither buttons nor links"
@@ -174,7 +180,7 @@ pub async fn navigation_is_links(driver: &mut TestDriver, _: &mut Track) -> Resu
     let media = driver.find_one_by("#toolbar a[title='Media']").await?;
     ensure!(media.attr("href").await? == "/media");
 
-    let title = driver.find_one_by("a.pending-title").await?;
+    let title = driver.find_one_by("a.track-pending-title").await?;
     let href = title.attr("href").await?;
     ensure!(
         href.starts_with("/shows/"),
@@ -187,7 +193,9 @@ pub async fn navigation_is_links(driver: &mut TestDriver, _: &mut Track) -> Resu
         .execute("window.__stayed = true;", Vec::new())
         .await?;
     title.click().await?;
-    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await?;
 
     let stayed = driver
         .webdriver()
@@ -268,7 +276,7 @@ pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> 
     let ret = driver
         .webdriver()
         .execute(
-            "const t = document.querySelector('.site-title'); return t.scrollWidth <= t.clientWidth + 1;",
+            "const t = document.querySelector('.track-site-title'); return t.scrollWidth <= t.clientWidth + 1;",
             Vec::new(),
         )
         .await?;
@@ -280,16 +288,18 @@ pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> 
 /// a way to dismiss it. A request the connection drops under is one way to
 /// cause one.
 pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
     driver.delay_websocket_sends(2000).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
-    driver.find_one_by("#page .icon.arrow-path.spin").await?;
+    driver
+        .find_one_by("#page .track-icon.track-icon-arrow-path.track-spin")
+        .await?;
     track.stop().await?;
 
     driver.find_one_by("#error [role=alert]").await?;
@@ -321,7 +331,7 @@ pub async fn phone_menu_rows_align(driver: &mut TestDriver, _: &mut Track) -> Re
         .await?
         .click()
         .await?;
-    ensure_menu_rows_align(driver, "#toolbar .toolbar-item").await?;
+    ensure_menu_rows_align(driver, "#toolbar .track-toolbar-item").await?;
     driver.snapshot("phone-navigation").await?;
     driver
         .find_one_by("#toolbar [title='Media']")
@@ -346,8 +356,8 @@ pub(crate) async fn ensure_menu_rows_align(driver: &TestDriver, selector: &str) 
         .webdriver()
         .execute(
             "return [...document.querySelectorAll(arguments[0])].map(row => {
-            const icon = row.querySelector('.icon');
-            const label = row.querySelector('.sockel-button-label') || row.querySelector(':scope > span:not(.icon)');
+            const icon = row.querySelector('.track-icon');
+            const label = row.querySelector('.sockel-button-label') || row.querySelector(':scope > span:not(.track-icon)');
             return [icon.getBoundingClientRect().left, label.getBoundingClientRect().left];
         });",
             vec![selector.into()],

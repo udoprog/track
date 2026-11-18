@@ -4,6 +4,7 @@ use sockel::{Glyph, IconSet, OverlayHost};
 use yew::prelude::*;
 
 use crate::app::App;
+use crate::class;
 use crate::l10n;
 
 const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
@@ -33,20 +34,20 @@ pub(super) fn Root() -> Html {
 /// sockel's glyphs drawn with the app's heroicons.
 fn icon_set() -> IconSet {
     const GLYPHS: &[(Glyph, &str)] = &[
-        (Glyph::Close, "x-mark"),
-        (Glyph::ChevronDown, "chevron-down"),
-        (Glyph::ChevronUp, "chevron-up"),
-        (Glyph::ChevronRight, "chevron-right"),
-        (Glyph::Check, "check"),
-        (Glyph::Plus, "plus"),
-        (Glyph::Minus, "minus"),
-        (Glyph::Spinner, "arrow-path"),
-        (Glyph::Grip, "bars-2"),
-        (Glyph::Ellipsis, "ellipsis-horizontal"),
-        (Glyph::Search, "magnifying-glass"),
-        (Glyph::Eye, "eye"),
-        (Glyph::EyeOff, "eye-slash"),
-        (Glyph::Copy, "clipboard"),
+        (Glyph::Close, class::ICON_X_MARK),
+        (Glyph::ChevronDown, class::ICON_CHEVRON_DOWN),
+        (Glyph::ChevronUp, class::ICON_CHEVRON_UP),
+        (Glyph::ChevronRight, class::ICON_CHEVRON_RIGHT),
+        (Glyph::Check, class::ICON_CHECK),
+        (Glyph::Plus, class::ICON_PLUS),
+        (Glyph::Minus, class::ICON_MINUS),
+        (Glyph::Spinner, class::ICON_ARROW_PATH),
+        (Glyph::Grip, class::ICON_BARS_2),
+        (Glyph::Ellipsis, class::ICON_ELLIPSIS_HORIZONTAL),
+        (Glyph::Search, class::ICON_MAGNIFYING_GLASS),
+        (Glyph::Eye, class::ICON_EYE),
+        (Glyph::EyeOff, class::ICON_EYE_SLASH),
+        (Glyph::Copy, class::ICON_CLIPBOARD),
     ];
 
     GLYPHS
@@ -54,7 +55,7 @@ fn icon_set() -> IconSet {
         .fold(IconSet::default(), |set, &(glyph, name)| {
             set.with(
                 glyph,
-                html! { <span class={classes!("icon", "glyph", name)} /> },
+                html! { <span class={classes!(class::ICON, class::GLYPH, name)} /> },
             )
         })
 }

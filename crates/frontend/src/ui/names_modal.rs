@@ -80,7 +80,7 @@ fn view_name(n: &api::AltName) -> Html {
     html! {
         <div class={classes!(class::TRANSLATION_ROW, "alt-name")}>
             <span class={classes!(class::TRANSLATION_LANGUAGE, language.is_none().then_some(class::UNKNOWN))} {title}>
-                if let Some(flag) = language.and_then(|l| l.flag).filter(|flag| flags::has_flag(flag)) {
+                if let Some(flag) = language.and_then(|l| l.flag).and_then(flags::flag_class) {
                     <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} aria-hidden="true" />
                 }
 

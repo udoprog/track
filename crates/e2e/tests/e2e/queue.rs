@@ -9,7 +9,7 @@ const TASK_RUNS: Duration = Duration::from_secs(20);
 
 async fn open_queue(driver: &mut TestDriver) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Queue]")
+        .find_one_by(".track-toolbar-item[title=Queue]")
         .await?
         .click()
         .await?;
@@ -33,7 +33,9 @@ pub async fn lists_tasks_in_columns(driver: &mut TestDriver, _: &mut Track) -> R
 
     driver
         .wait_until("the top languages refresh to complete", async || {
-            let kinds = driver.find_all_texts(".task-row.done .task-kind").await?;
+            let kinds = driver
+                .find_all_texts(".track-task-row.track-done .track-task-kind")
+                .await?;
             Ok(kinds.iter().any(|k| k == "Languages"))
         })
         .await?;
@@ -46,12 +48,12 @@ pub async fn lists_tasks_in_columns(driver: &mut TestDriver, _: &mut Track) -> R
 
     // On a wide screen a task's kind and subject sit side by side.
     let kind = driver
-        .find_first(".task-row .task-kind")
+        .find_first(".track-task-row .track-task-kind")
         .await?
         .rect()
         .await?;
     let title = driver
-        .find_first(".task-row .task-title")
+        .find_first(".track-task-row .track-task-title")
         .await?
         .rect()
         .await?;
@@ -72,9 +74,13 @@ pub async fn keeps_rows_in_place(driver: &mut TestDriver, _: &mut Track) -> Resu
 
     sync_all(driver).await?;
 
-    let row = driver.find_first(".task-row.pending[data-task]").await?;
+    let row = driver
+        .find_first(".track-task-row.track-pending[data-task]")
+        .await?;
     let id = row.attr("data-task").await?;
-    let ids = driver.find_all_attrs(".task-row", "data-task").await?;
+    let ids = driver
+        .find_all_attrs(".track-task-row", "data-task")
+        .await?;
     let index = ids.iter().position(|i| *i == id);
 
     ensure!(
@@ -82,17 +88,19 @@ pub async fn keeps_rows_in_place(driver: &mut TestDriver, _: &mut Track) -> Resu
         "the strip changed height when a task was queued"
     );
 
-    let selector = format!(".task-row[data-task='{id}']");
+    let selector = format!(".track-task-row[data-task='{id}']");
 
     driver
         .wait_until_within(TASK_RUNS, "the queued task to run", async || {
             let class = driver.find_one_by(&selector).await?.attr("class").await?;
 
-            Ok(class.contains("done") || class.contains("failed"))
+            Ok(class.contains("track-done") || class.contains("track-failed"))
         })
         .await?;
 
-    let ids = driver.find_all_attrs(".task-row", "data-task").await?;
+    let ids = driver
+        .find_all_attrs(".track-task-row", "data-task")
+        .await?;
     ensure!(
         ids.iter().position(|i| *i == id) == index,
         "the task moved when it ran: {ids:?}"
@@ -110,7 +118,9 @@ pub async fn follows_the_next_task(driver: &mut TestDriver, _: &mut Track) -> Re
     open_queue(driver).await?;
     sync_all(driver).await?;
 
-    driver.wait_count(".task-row.pending", 20).await?;
+    driver
+        .wait_count(".track-task-row.track-pending", 20)
+        .await?;
     ensure!(
         driver.count("[title='Follow the running task']").await? == 0,
         "the queue starts out not following"
@@ -132,12 +142,14 @@ pub async fn follows_the_next_task(driver: &mut TestDriver, _: &mut Track) -> Re
         .await?;
 
     let next = driver
-        .find_one_by("[data-test=queue-now] .task-title")
+        .find_one_by("[data-test=queue-now] .track-task-title")
         .await?
         .text()
         .await?;
 
-    let titles = driver.find_all_texts(".task-row .task-title").await?;
+    let titles = driver
+        .find_all_texts(".track-task-row .track-task-title")
+        .await?;
     ensure!(
         titles.contains(&next),
         "the next task {next:?} is not on the followed page: {titles:?}"
@@ -151,22 +163,22 @@ pub async fn shows_failed_tasks(driver: &mut TestDriver, _: &mut Track) -> Resul
     open_queue(driver).await?;
     sync_all(driver).await?;
 
-    driver.find_first(".task-row.pending").await?;
+    driver.find_first(".track-task-row.track-pending").await?;
     let kinds = driver
-        .find_all_texts(".task-row.pending .task-kind")
+        .find_all_texts(".track-task-row.track-pending .track-task-kind")
         .await?;
     let ids = driver
-        .find_all_attrs(".task-row.pending", "data-task")
+        .find_all_attrs(".track-task-row.track-pending", "data-task")
         .await?;
     let at = kinds
         .iter()
         .position(|k| k == "Show")
         .context("no show sync was queued")?;
     let id = ids[at].clone();
-    let row = format!(".task-row[data-task='{id}']");
+    let row = format!(".track-task-row[data-task='{id}']");
 
     driver
-        .find_one_by(&format!("{row} .task-title"))
+        .find_one_by(&format!("{row} .track-task-title"))
         .await?
         .click()
         .await?;
@@ -185,7 +197,7 @@ pub async fn shows_failed_tasks(driver: &mut TestDriver, _: &mut Track) -> Resul
             "the sync of the removed show to fail",
             async || {
                 let class = driver.find_one_by(&row).await?.attr("class").await?;
-                Ok(class.contains("failed"))
+                Ok(class.contains("track-failed"))
             },
         )
         .await?;
@@ -197,12 +209,12 @@ pub async fn shows_failed_tasks(driver: &mut TestDriver, _: &mut Track) -> Resul
         .await?;
 
     driver
-        .wait_texts("[title='Show failed tasks'] .chip-count", ["1"])
+        .wait_texts("[title='Show failed tasks'] .track-chip-count", ["1"])
         .await?;
-    driver.wait_count(".task-row", 1).await?;
+    driver.wait_count(".track-task-row", 1).await?;
 
     let error = driver
-        .find_one_by(&format!("{row} .task-error"))
+        .find_one_by(&format!("{row} .track-task-error"))
         .await?
         .text()
         .await?;
@@ -227,11 +239,19 @@ pub async fn empty_filters_say_what_is_missing(
         .await?;
 
     driver
-        .wait_texts(".task-empty", ["No syncs have failed."])
+        .wait_texts(".track-task-empty", ["No syncs have failed."])
         .await?;
 
-    let line = driver.find_one_by(".task-empty").await?.rect().await?;
-    let list = driver.find_one_by(".task-timeline").await?.rect().await?;
+    let line = driver
+        .find_one_by(".track-task-empty")
+        .await?
+        .rect()
+        .await?;
+    let list = driver
+        .find_one_by(".track-task-timeline")
+        .await?
+        .rect()
+        .await?;
     let middle = list.x + list.width / 2.0;
     ensure!(
         (line.x + line.width / 2.0 - middle).abs() < 2.0,
@@ -241,7 +261,7 @@ pub async fn empty_filters_say_what_is_missing(
 }
 
 /// The status card's determinate bar, while the running task has one.
-const STRIP_BAR: &str = "[data-test=queue-now] .task-progress[aria-valuenow]";
+const STRIP_BAR: &str = "[data-test=queue-now] .track-task-progress[aria-valuenow]";
 
 /// Queue a sync of the seeded show and wait until it fetches translations
 /// from the slow TMDB stand-in, returning how far its bar is.
@@ -251,7 +271,7 @@ async fn sync_until_translations(driver: &mut TestDriver) -> Result<u32> {
     driver
         .wait_until_within(TASK_RUNS, "the sync to fetch translations", async || {
             let steps = driver
-                .find_all_texts("[data-test=queue-now] .queue-now-step-label")
+                .find_all_texts("[data-test=queue-now] .track-queue-now-step-label")
                 .await?;
             Ok(steps.iter().any(|s| s == "TMDB translations")
                 && driver.count(STRIP_BAR).await? == 1)
@@ -292,7 +312,7 @@ pub async fn shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Resu
     let first = sync_until_translations(driver).await?;
 
     let count = driver
-        .find_one_by("[data-test=queue-now] .queue-now-step-count")
+        .find_one_by("[data-test=queue-now] .track-queue-now-step-count")
         .await?
         .text()
         .await?;
@@ -302,7 +322,7 @@ pub async fn shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Resu
     );
 
     let step = driver
-        .find_one_by(".task-row.running .task-step")
+        .find_one_by(".track-task-row.track-running .track-task-step")
         .await?
         .text()
         .await?;
@@ -312,7 +332,7 @@ pub async fn shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Resu
     );
     ensure!(
         driver
-            .count(".task-row.running .task-progress[aria-valuenow]")
+            .count(".track-task-row.track-running .track-task-progress[aria-valuenow]")
             .await?
             == 1,
         "the running row has no bar"
@@ -327,17 +347,20 @@ pub async fn shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Resu
 
     driver
         .wait_until_within(TASK_RUNS, "the sync to finish", async || {
-            Ok(driver.count(".task-row.running").await? == 0)
+            Ok(driver.count(".track-task-row.track-running").await? == 0)
         })
         .await?;
 
-    let kinds = driver.find_all_texts(".task-row.done .task-kind").await?;
+    let kinds = driver
+        .find_all_texts(".track-task-row.track-done .track-task-kind")
+        .await?;
     ensure!(
         kinds.iter().any(|k| k == "Show"),
         "the sync did not finish cleanly: {kinds:?}"
     );
     ensure!(
-        driver.count(".task-progress").await? == 0 && driver.count(".queue-now-step").await? == 0,
+        driver.count(".track-task-progress").await? == 0
+            && driver.count(".track-queue-now-step").await? == 0,
         "progress is still shown after the sync finished"
     );
     ensure!(
@@ -361,7 +384,7 @@ pub async fn phone_shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -
 
     let card = strip.rect().await?;
     let count = driver
-        .find_one_by("[data-test=queue-now] .queue-now-step-count")
+        .find_one_by("[data-test=queue-now] .track-queue-now-step-count")
         .await?
         .rect()
         .await?;
@@ -374,7 +397,7 @@ pub async fn phone_shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -
     );
 
     let step = driver
-        .find_one_by(".task-row.running .task-step")
+        .find_one_by(".track-task-row.track-running .track-task-step")
         .await?
         .rect()
         .await?;
@@ -383,7 +406,10 @@ pub async fn phone_shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -
         "the running row repeats the step on a phone"
     );
     ensure!(
-        driver.count(".task-row.running .task-progress").await? == 1,
+        driver
+            .count(".track-task-row.track-running .track-task-progress")
+            .await?
+            == 1,
         "the running row has no bar"
     );
     Ok(())

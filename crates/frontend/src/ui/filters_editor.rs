@@ -298,9 +298,9 @@ impl FiltersEditor {
                 } else {
                     html! {
                         {for v.iter().map(|s| {
-                            if let Some(s) = s.to_iso() && flags::has_flag(s.alpha2) {
+                            if let Some(s) = s.to_iso() && let Some(flag) = flags::flag_class(s.alpha2) {
                                 html! {
-                                    <span class={classes!(class::ITEM_INLINE, class::FLAG, s.alpha2)} title={s.name} />
+                                    <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} title={s.name} />
                                 }
                             } else {
                                 html! {

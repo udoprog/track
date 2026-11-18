@@ -6,13 +6,13 @@ use super::Track;
 /// name in the display language, with the most credited first.
 pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .wait_texts(".track-person-name", ["Greta Garbo", "Ada Lovelace"])
         .await?;
 
     driver
@@ -27,7 +27,7 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
         .await?;
 
     driver
-        .wait_texts(".person-name", ["Ada Lovelace", "Greta Garbo"])
+        .wait_texts(".track-person-name", ["Ada Lovelace", "Greta Garbo"])
         .await?;
     driver.wait_texts("[title='Sort by']", ["Name"]).await
 }
@@ -35,18 +35,20 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
 /// While the people load, the page shows neither people nor pages of an
 /// empty list.
 pub async fn shows_nothing_while_loading(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
     driver.delay_websocket_sends(2000).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
-    driver.find_one_by("#page .icon.arrow-path.spin").await?;
+    driver
+        .find_one_by("#page .track-icon.track-icon-arrow-path.track-spin")
+        .await?;
     ensure!(
-        driver.count("#page .person-card").await? == 0,
+        driver.count("#page .track-person-card").await? == 0,
         "people show before they load"
     );
     ensure!(
@@ -56,7 +58,7 @@ pub async fn shows_nothing_while_loading(driver: &mut TestDriver, _: &mut Track)
 
     driver.stop_delaying_websocket_sends().await?;
     driver
-        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .wait_texts(".track-person-name", ["Greta Garbo", "Ada Lovelace"])
         .await
 }
 
@@ -64,16 +66,18 @@ pub async fn shows_nothing_while_loading(driver: &mut TestDriver, _: &mut Track)
 /// there is one, and filtering starts over from the first page.
 pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
     // Most credited first; the uncredited tie, last added first.
-    driver.wait_count(".person-grid .person-card", 24).await?;
+    driver
+        .wait_count(".track-person-grid .track-person-card", 24)
+        .await?;
     driver
         .wait_texts(
-            ".person-card:nth-child(-n+3) .person-name",
+            ".track-person-card:nth-child(-n+3) .track-person-name",
             ["Greta Garbo", "Extra 30", "Extra 29"],
         )
         .await?;
@@ -87,10 +91,12 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         .await?
         .click()
         .await?;
-    driver.wait_count(".person-grid .person-card", 8).await?;
+    driver
+        .wait_count(".track-person-grid .track-person-card", 8)
+        .await?;
     driver
         .wait_texts(
-            ".person-card:is(:first-child, :last-child) .person-name",
+            ".track-person-card:is(:first-child, :last-child) .track-person-name",
             ["Extra 07", "Ada Lovelace"],
         )
         .await?;
@@ -105,10 +111,12 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         .send_keys("EXTRA 2")
         .await?;
     // Counts first: names read while the list is replaced go stale.
-    driver.wait_count(".person-grid .person-card", 10).await?;
+    driver
+        .wait_count(".track-person-grid .track-person-card", 10)
+        .await?;
     driver
         .wait_texts(
-            ".person-name",
+            ".track-person-name",
             [
                 "Extra 29", "Extra 28", "Extra 27", "Extra 26", "Extra 25", "Extra 24", "Extra 23",
                 "Extra 22", "Extra 21", "Extra 20",
@@ -130,8 +138,12 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         .await?
         .send_keys("garbo")
         .await?;
-    driver.wait_count(".person-grid .person-card", 1).await?;
-    driver.wait_texts(".person-name", ["Greta Garbo"]).await
+    driver
+        .wait_count(".track-person-grid .track-person-card", 1)
+        .await?;
+    driver
+        .wait_texts(".track-person-name", ["Greta Garbo"])
+        .await
 }
 
 /// People without a photo show a silhouette, on the list and in a show's
@@ -141,17 +153,24 @@ pub async fn shows_a_silhouette_without_a_photo(
     _: &mut Track,
 ) -> Result<()> {
     super::show::open_show(driver).await?;
-    driver.find_first(".cast-photo .icon.user").await?;
+    driver
+        .find_first(".track-cast-photo .track-icon.track-icon-user")
+        .await?;
 
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
-    driver.wait_count(".person-photo .icon.user", 2).await?;
+    driver
+        .wait_count(".track-person-photo .track-icon.track-icon-user", 2)
+        .await?;
     ensure!(
-        driver.count("#page .icon.question-mark-circle").await? == 0,
+        driver
+            .count("#page .track-icon.track-icon-question-mark-circle")
+            .await?
+            == 0,
         "a person still shows a question mark"
     );
     Ok(())
@@ -164,23 +183,31 @@ pub async fn phone_person_page_keeps_the_photo_shape(
     _: &mut Track,
 ) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
-    driver.find_one_by(".toolbar-toggle").await?.click().await?;
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-toggle")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .wait_texts(".track-person-name", ["Greta Garbo", "Ada Lovelace"])
         .await?;
-    driver.find_nth(".person-card", 1).await?.click().await?;
+    driver
+        .find_nth(".track-person-card", 1)
+        .await?
+        .click()
+        .await?;
     driver.wait_texts("#page h1", ["Ada Lovelace"]).await?;
 
     let photo = driver
-        .find_one_by(".person-detail-photo")
+        .find_one_by(".track-person-detail-photo")
         .await?
         .rect()
         .await?;
@@ -194,7 +221,7 @@ pub async fn phone_person_page_keeps_the_photo_shape(
 
     let page = driver.find_one_by("#page").await?.rect().await?;
     let bio = driver
-        .find_one_by(".person-biography")
+        .find_one_by(".track-person-biography")
         .await?
         .rect()
         .await?;
@@ -211,22 +238,29 @@ pub async fn phone_person_page_keeps_the_photo_shape(
 /// page, naming every part.
 pub async fn known_for_lists_each_title_once(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .wait_texts(".track-person-name", ["Greta Garbo", "Ada Lovelace"])
         .await?;
-    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver
+        .find_nth(".track-person-card", 0)
+        .await?
+        .click()
+        .await?;
 
     driver
-        .wait_texts("[data-testid=filmography] .person-name", ["Seeded Show"])
+        .wait_texts(
+            "[data-testid=filmography] .track-person-name",
+            ["Seeded Show"],
+        )
         .await?;
     driver
         .wait_texts(
-            "[data-testid=filmography] .person-department",
+            "[data-testid=filmography] .track-person-department",
             ["The Duchess, The Narrator"],
         )
         .await
@@ -236,11 +270,15 @@ pub async fn known_for_lists_each_title_once(driver: &mut TestDriver, _: &mut Tr
 /// editor, and the switch holds after the page reloads.
 pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
-    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver
+        .find_nth(".track-person-card", 0)
+        .await?
+        .click()
+        .await?;
     driver.find_one_by("[data-testid=person-header] h1").await?;
 
     open_remote_editor(driver).await?;

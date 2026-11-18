@@ -10,7 +10,7 @@ const SECOND: &str = "S01E02 Second Episode";
 async fn wait_label(driver: &TestDriver, label: &str) -> Result<()> {
     driver
         .wait_until(format_args!("the card to read {label:?}"), async || {
-            Ok(driver.rendered_texts(".pending-label").await? == [label])
+            Ok(driver.rendered_texts(".track-pending-label").await? == [label])
         })
         .await
 }
@@ -18,23 +18,25 @@ async fn wait_label(driver: &TestDriver, label: &str) -> Result<()> {
 /// The watched button marks the episode in one click and moves the show along,
 /// and the toast undoes it.
 pub async fn marks_watched_in_one_click(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".pending-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-pending-title", ["Seeded Show"])
+        .await?;
     wait_label(driver, FIRST).await?;
 
     driver
-        .find_one_by(".pending-item [title='Mark watched']")
+        .find_one_by(".track-pending-item [title='Mark watched']")
         .await?
         .click()
         .await?;
 
     wait_label(driver, SECOND).await?;
     driver
-        .find_one_by(".toast [title=Undo]")
+        .find_one_by(".track-toast [title=Undo]")
         .await?
         .click()
         .await?;
     wait_label(driver, FIRST).await?;
-    driver.wait_count(".toast", 0).await?;
+    driver.wait_count(".track-toast", 0).await?;
     Ok(())
 }
 
@@ -44,7 +46,7 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
     wait_label(driver, FIRST).await?;
 
     let more = driver
-        .find_one_by(".pending-item [title='Choose when']")
+        .find_one_by(".track-pending-item [title='Choose when']")
         .await?;
     more.click().await?;
 
@@ -98,10 +100,16 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
     wait_label(driver, SECOND).await?;
 
     // The episode was marked watched at the chosen time.
-    driver.find_one_by(".pending-title").await?.click().await?;
+    driver
+        .find_one_by(".track-pending-title")
+        .await?
+        .click()
+        .await?;
     driver
         .wait_until("the first episode to show the chosen time", async || {
-            let meta = driver.rendered_texts("[id='S01E01'] .episode-meta").await?;
+            let meta = driver
+                .rendered_texts("[id='S01E01'] .track-episode-meta")
+                .await?;
             Ok(meta.iter().any(|m| {
                 let words = m.split_whitespace().collect::<Vec<_>>().join(" ");
                 words.contains("Watched once 2nd of January, 2024 at 10:15")
@@ -114,12 +122,15 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
 pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
         .wait_texts(
-            ".tabs .tab",
+            ".track-tabs .track-tab",
             ["What's Next", "Upcoming", "Schedule", "History"],
         )
         .await?;
     driver
-        .wait_texts(".chips .chip.selected", ["Shows", "Movies"])
+        .wait_texts(
+            ".track-chips .track-chip.track-selected",
+            ["Shows", "Movies"],
+        )
         .await?;
 
     driver
@@ -127,7 +138,9 @@ pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Resul
         .await?
         .click()
         .await?;
-    driver.wait_texts(".chips .chip.selected", ["Shows"]).await
+    driver
+        .wait_texts(".track-chips .track-chip.track-selected", ["Shows"])
+        .await
 }
 
 /// The lookahead and page size wait behind a View options button instead of
@@ -158,7 +171,7 @@ pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Tra
     driver.set_window_size(1200, 900).await?;
     wait_label(driver, FIRST).await?;
 
-    let grid = driver.find_one_by(".pending-grid").await?;
+    let grid = driver.find_one_by(".track-pending-grid").await?;
 
     driver
         .wait_until("several cards to fit in a row", async || {
@@ -174,7 +187,7 @@ pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Tra
         })
         .await?;
 
-    let date = driver.find_one_by(".pending-date").await?;
+    let date = driver.find_one_by(".track-pending-date").await?;
     let text = date.text().await?;
     ensure!(
         text.ends_with(" ago"),
@@ -196,7 +209,7 @@ pub async fn upcoming_is_an_agenda(driver: &mut TestDriver, _: &mut Track) -> Re
 
     driver
         .wait_until("the first day to be today", async || {
-            let days = driver.rendered_texts(".agenda-day-title").await?;
+            let days = driver.rendered_texts(".track-agenda-day-title").await?;
             Ok(days.first().is_some_and(|d| d.starts_with("Today")))
         })
         .await?;
@@ -218,20 +231,26 @@ pub async fn schedule_names_its_days(driver: &mut TestDriver, _: &mut Track) -> 
     driver.set_window_size(1200, 900).await?;
     driver.reopen_with("view=schedule").await?;
 
-    let heading = driver.find_first(".calendar-month").await?.text().await?;
+    let heading = driver
+        .find_first(".track-calendar-month")
+        .await?
+        .text()
+        .await?;
     ensure!(
         heading.chars().any(|c| c.is_ascii_digit()),
         "the month heading has no year: {heading:?}"
     );
 
-    let weekdays = driver.rendered_texts(".calendar-weekdays > span").await?;
+    let weekdays = driver
+        .rendered_texts(".track-calendar-weekdays > span")
+        .await?;
     ensure!(
         weekdays.len() == 7 && weekdays.iter().all(|d| !d.trim().is_empty()),
         "expected seven weekday names, got {weekdays:?}"
     );
 
     driver
-        .find_one_by(".calendar-cell.today .calendar-day-number")
+        .find_one_by(".track-calendar-cell.track-today .track-calendar-day-number")
         .await?;
     Ok(())
 }
@@ -245,7 +264,9 @@ pub async fn mobile_cards_always_have_a_picture(
     driver.set_window_size(400, 850).await?;
     wait_label(driver, FIRST).await?;
 
-    let banner = driver.find_one_by(".pending-item image.banner").await?;
+    let banner = driver
+        .find_one_by(".track-pending-item image.track-banner")
+        .await?;
     ensure!(banner.visible().await?, "the card has no picture");
     ensure!(
         banner.rect().await?.height > 0.0,
@@ -288,7 +309,7 @@ pub async fn secondary_actions_are_filled(driver: &mut TestDriver, _: &mut Track
 
     for title in ["Move pending", "Skip episode"] {
         let button = driver
-            .find_first(&format!(".pending-item [title='{title}']"))
+            .find_first(&format!(".track-pending-item [title='{title}']"))
             .await?;
         let fill = button.css("background-color").await?;
         ensure!(
@@ -301,7 +322,7 @@ pub async fn secondary_actions_are_filled(driver: &mut TestDriver, _: &mut Track
 }
 
 /// The schedule entry for the show airing tomorrow.
-const FUTURE: &str = ".schedule-item:has([title='Open Future Show'])";
+const FUTURE: &str = ".track-schedule-item:has([title='Open Future Show'])";
 
 /// Upcoming lists what airs soon: each entry's times sit under its title, and
 /// a time opens that episode.
@@ -314,12 +335,12 @@ pub async fn upcoming_times_open_their_episode(
 
     driver.find_one_by(FUTURE).await?;
     let title = driver
-        .find_one_by(&format!("{FUTURE} .schedule-title"))
+        .find_one_by(&format!("{FUTURE} .track-schedule-title"))
         .await?
         .rect()
         .await?;
     let times = driver
-        .find_one_by(&format!("{FUTURE} .schedule-times"))
+        .find_one_by(&format!("{FUTURE} .track-schedule-times"))
         .await?
         .rect()
         .await?;
@@ -328,7 +349,10 @@ pub async fn upcoming_times_open_their_episode(
         "the times are not under the title: {title:?} {times:?}"
     );
     ensure!(
-        driver.count(&format!("{FUTURE} a.schedule-time")).await? == 2,
+        driver
+            .count(&format!("{FUTURE} a.track-schedule-time"))
+            .await?
+            == 2,
         "expected both episodes' times"
     );
 
@@ -338,7 +362,9 @@ pub async fn upcoming_times_open_their_episode(
         .click()
         .await?;
 
-    driver.wait_texts(".detail-title", ["Future Show"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Future Show"])
+        .await?;
     let url = driver.webdriver().current_url().await?;
     ensure!(url.fragment() == Some("S01E02"), "the time opened {url}");
     Ok(())
@@ -348,7 +374,9 @@ pub async fn upcoming_times_open_their_episode(
 pub async fn schedule_entries_sit_flush_left(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(1200, 900).await?;
     driver.reopen_with("view=schedule").await?;
-    driver.find_first(".calendar-cell.today").await?;
+    driver
+        .find_first(".track-calendar-cell.track-today")
+        .await?;
 
     // Weeks start on Monday, so on a Sunday tomorrow is in next week.
     let sunday = driver
@@ -367,7 +395,7 @@ pub async fn schedule_entries_sit_flush_left(driver: &mut TestDriver, _: &mut Tr
 
     let entry = driver.find_one_by(FUTURE).await?.rect().await?;
     let title = driver
-        .find_one_by(&format!("{FUTURE} .schedule-title"))
+        .find_one_by(&format!("{FUTURE} .track-schedule-title"))
         .await?
         .rect()
         .await?;
@@ -423,14 +451,14 @@ pub async fn schedule_keeps_weeks_when_more_are_shown(
     driver: &mut TestDriver,
     _: &mut Track,
 ) -> Result<()> {
-    const WEEKS: &str = ".calendar-week";
-    const SHOWN: &str = ".calendar-week, .calendar-week *";
+    const WEEKS: &str = ".track-calendar-week";
+    const SHOWN: &str = ".track-calendar-week, .track-calendar-week *";
 
     driver.set_window_size(1200, 900).await?;
     driver.reopen_with("view=schedule").await?;
-    driver.find_first(".calendar-week").await?;
+    driver.find_first(".track-calendar-week").await?;
     driver
-        .wait_count(".calendar-week .sockel-skeleton", 0)
+        .wait_count(".track-calendar-week .sockel-skeleton", 0)
         .await?;
 
     let weeks = driver.count(WEEKS).await?;
@@ -449,7 +477,7 @@ pub async fn schedule_keeps_weeks_when_more_are_shown(
 
     driver.wait_count(WEEKS, weeks + 1).await?;
     driver
-        .wait_count(".calendar-week .sockel-skeleton", 0)
+        .wait_count(".track-calendar-week .sockel-skeleton", 0)
         .await?;
 
     let kept = kept_marked(driver, SHOWN).await?;

@@ -4,13 +4,13 @@ use yew_e2e::prelude::*;
 
 use super::Track;
 
-const SPINNER: &str = "a[title='Syncing, show in queue'] .icon.spin";
+const SPINNER: &str = "a[title='Syncing, show in queue'] .track-icon.track-spin";
 const SYNC: &str = "button[title='Sync now']";
 
 /// Opens the queue and queues a sync of every show, filling more than one page.
 async fn sync_all(driver: &mut TestDriver) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Queue]")
+        .find_one_by(".track-toolbar-item[title=Queue]")
         .await?
         .click()
         .await?;
@@ -19,7 +19,9 @@ async fn sync_all(driver: &mut TestDriver) -> Result<()> {
         .await?
         .click()
         .await?;
-    driver.wait_count(".task-row.pending", 20).await?;
+    driver
+        .wait_count(".track-task-row.track-pending", 20)
+        .await?;
     Ok(())
 }
 
@@ -27,10 +29,10 @@ async fn sync_all(driver: &mut TestDriver) -> Result<()> {
 /// returns that sync's task.
 async fn open_pending_show(driver: &mut TestDriver, nth: usize) -> Result<String> {
     let kinds = driver
-        .find_all_texts(".task-row.pending .task-kind")
+        .find_all_texts(".track-task-row.track-pending .track-task-kind")
         .await?;
     let ids = driver
-        .find_all_attrs(".task-row.pending", "data-task")
+        .find_all_attrs(".track-task-row.track-pending", "data-task")
         .await?;
     let at = kinds
         .iter()
@@ -42,11 +44,13 @@ async fn open_pending_show(driver: &mut TestDriver, nth: usize) -> Result<String
     let id = ids[at].clone();
 
     driver
-        .find_one_by(&format!(".task-row[data-task='{id}'] .task-title"))
+        .find_one_by(&format!(
+            ".track-task-row[data-task='{id}'] .track-task-title"
+        ))
         .await?
         .click()
         .await?;
-    driver.find_one_by(".detail-title").await?;
+    driver.find_one_by(".track-detail-title").await?;
     Ok(id)
 }
 
@@ -108,7 +112,7 @@ pub async fn spinner_opens_the_task_in_the_queue(
 
     driver.find_one_by("[data-test=queue-now]").await?;
     driver
-        .find_one_by(&format!(".task-row.focused[data-task='{id}']"))
+        .find_one_by(&format!(".track-task-row.track-focused[data-task='{id}']"))
         .await?;
     Ok(())
 }

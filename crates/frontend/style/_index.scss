@@ -1120,10 +1120,6 @@ image {
 
     &.track-poster {
         aspect-ratio: 2 / 3;
-
-        &-side {
-            height: 240px;
-        }
     }
 
     &.track-banner {
@@ -1186,26 +1182,6 @@ image {
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.track-status {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--neutral-selected);
-    color: v.$text-primary;
-    border: 1px solid v.$border-subtle-transparent;
-    border-radius: v.$radius;
-    padding: 0 v.$padding;
-    white-space: nowrap;
-
-    height: v.$input-height;
-    min-width: v.$input-height;
-
-    @include g.on-mobile {
-        height: v.$input-height-touch;
-        min-width: v.$input-height-touch;
-    }
 }
 
 .track-detail-layout {
@@ -1751,10 +1727,6 @@ input-label-controls {
         font-size: inherit;
         color: v.$text-color;
         border-radius: 0;
-
-        &.track-column {
-            align-items: stretch;
-        }
     }
 }
 
@@ -2451,7 +2423,7 @@ button.track-chip {
     --icon-color: #{v.$text-muted};
     color: v.$text-muted;
 
-    &:hover:not(.track-disabled):not(:disabled) {
+    &:hover:not(:disabled) {
         border-color: v.$border-input;
         color: v.$text-color;
     }
@@ -2501,7 +2473,7 @@ button.track-chip {
         color: v.$text-muted;
         box-shadow: inset 0 -2px 0 transparent;
 
-        &:hover:not(.track-disabled):not(:disabled) {
+        &:hover:not(:disabled) {
             color: v.$text-color;
         }
 

@@ -32,11 +32,11 @@ pub async fn cloudflare_requires_a_click(driver: &mut TestDriver, _: &mut Track)
     driver.find_one_by("#auth-password").await?;
     driver.find_one_by(selector).await?.click().await?;
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["root"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["root"])
         .await?;
     driver.reload().await?;
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["root"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["root"])
         .await?;
     open_account(driver).await?;
     driver.find_one_by(".auth-sign-out").await?.click().await?;
@@ -81,7 +81,7 @@ pub async fn cloudflare_is_unavailable(driver: &mut TestDriver, _: &mut Track) -
 pub async fn signs_in(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     sign_in(driver, "root", "root").await?;
     driver
-        .wait_texts(".toolbar-item.active", ["Dashboard"])
+        .wait_texts(".track-toolbar-item.track-active", ["Dashboard"])
         .await?;
     Ok(())
 }
@@ -144,7 +144,7 @@ pub async fn registers_with_a_login_link(driver: &mut TestDriver, track: &mut Tr
     confirm.send_keys(ENTER).await?;
 
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["alice"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["alice"])
         .await?;
 
     let url = driver.webdriver().current_url().await?;
@@ -194,7 +194,7 @@ pub async fn changes_the_password(driver: &mut TestDriver, _: &mut Track) -> Res
     password.send_keys("new password").await?;
     password.send_keys(ENTER).await?;
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["root"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["root"])
         .await?;
     Ok(())
 }
@@ -213,7 +213,7 @@ pub async fn changes_the_login(driver: &mut TestDriver, _: &mut Track) -> Result
     login.send_keys(ENTER).await?;
 
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["admin"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["admin"])
         .await?;
     driver
         .wait_texts(".auth-profile .auth-notice", ["Saved."])
@@ -236,14 +236,14 @@ async fn fill_sign_in(driver: &TestDriver, login: &str, password: &str) -> Resul
 async fn sign_in(driver: &TestDriver, login: &str, password: &str) -> Result<()> {
     fill_sign_in(driver, login, password).await?;
     driver
-        .wait_texts(".toolbar-item[title=Account]", [login])
+        .wait_texts(".track-toolbar-item[title=Account]", [login])
         .await?;
     Ok(())
 }
 
 async fn open_account(driver: &TestDriver) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Account]")
+        .find_one_by(".track-toolbar-item[title=Account]")
         .await?
         .click()
         .await?;

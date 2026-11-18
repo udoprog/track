@@ -4,10 +4,10 @@ use super::Track;
 
 /// Opening Search from another page puts the cursor in the search input.
 pub async fn focuses_the_input(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Search]")
+        .find_one_by(".track-toolbar-item[title=Search]")
         .await?
         .click()
         .await?;
@@ -29,14 +29,14 @@ pub async fn focuses_the_input(driver: &mut TestDriver, _: &mut Track) -> Result
 /// Before anything is searched for, the page says what it searches.
 pub async fn says_what_it_searches(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Search]")
+        .find_one_by(".track-toolbar-item[title=Search]")
         .await?
         .click()
         .await?;
 
     driver
         .wait_texts(
-            "#page p.text-muted",
+            "#page p.track-text-muted",
             ["Search TMDB and TVDB for shows and movies to track."],
         )
         .await
@@ -46,7 +46,7 @@ pub async fn says_what_it_searches(driver: &mut TestDriver, _: &mut Track) -> Re
 /// centred on it, at desktop and phone widths, and opens the Finding section.
 pub async fn help_mark_sits_beside_its_text(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Search]")
+        .find_one_by(".track-toolbar-item[title=Search]")
         .await?
         .click()
         .await?;
@@ -54,13 +54,13 @@ pub async fn help_mark_sits_beside_its_text(driver: &mut TestDriver, _: &mut Tra
     for width in [1200, 400] {
         driver.set_window_size(width, 800).await?;
         driver
-            .find_one_by("#page p.text-muted button.help-mark")
+            .find_one_by("#page p.track-text-muted button.track-help-mark")
             .await?;
 
         let ret = driver
             .webdriver()
             .execute(
-                "const mark = document.querySelector('#page p.text-muted button.help-mark');
+                "const mark = document.querySelector('#page p.track-text-muted button.track-help-mark');
                 const range = document.createRange();
                 range.selectNodeContents(mark.closest('p'));
                 range.setEndBefore(mark);
@@ -84,7 +84,7 @@ pub async fn help_mark_sits_beside_its_text(driver: &mut TestDriver, _: &mut Tra
     }
 
     driver
-        .find_one_by("#page p.text-muted button.help-mark")
+        .find_one_by("#page p.track-text-muted button.track-help-mark")
         .await?
         .click()
         .await?;

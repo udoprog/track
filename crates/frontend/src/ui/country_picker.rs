@@ -145,8 +145,8 @@ impl Component for CountryPicker {
         let trigger = html! {
             <Button icon={class::ICON_GLOBE_ALT} label={if current.is_empty() { String::from("All countries") } else { format!("{} selected", current.len()) }} title="Select countries" onclick={link.callback(|_| Msg::Open)}>
                 {for current.iter().filter_map(|code| {
-                    code.to_iso().filter(|c| flags::has_flag(c.alpha2)).map(|c| html! {
-                        <span class={classes!(class::FLAG, c.alpha2)} />
+                    code.to_iso().and_then(|c| flags::flag_class(c.alpha2)).map(|flag| html! {
+                        <span class={classes!(class::FLAG, flag)} />
                     })
                 })}
             </Button>
@@ -174,8 +174,8 @@ impl Component for CountryPicker {
                 <Button key={code} class={classes!(class::CLICKABLE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, selected.then_some(class::ACTIVE))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
                     <span class={class::FILL}>{country.name}</span>
 
-                    if let Some(c) = code.to_iso().filter(|c| flags::has_flag(c.alpha2)) {
-                        <span class={classes!(class::ITEM_INLINE, class::FLAG, c.alpha2)} />
+                    if let Some(flag) = code.to_iso().and_then(|c| flags::flag_class(c.alpha2)) {
+                        <span class={classes!(class::ITEM_INLINE, class::FLAG, flag)} />
                     }
 
                     <span class={class::ITEM_INLINE} title={code}>

@@ -116,7 +116,7 @@ impl Component for TranslatedText {
         let toggle = html! {
             <Button node_ref={self.anchor.clone()} class={class::LANGUAGE_TOGGLE} title="Change displayed language" expanded={Some(self.open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
                 if let Some(locale) = foreign {
-                    if let Some(flag) = locale.flag().filter(|flag| flags::has_flag(flag)) {
+                    if let Some(flag) = locale.flag().and_then(flags::flag_class) {
                         <span class={classes!(class::FLAG, flag)} />
                     } else {
                         <span class={class::TEXT_MUTED}>{locale}</span>

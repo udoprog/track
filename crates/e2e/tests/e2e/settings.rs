@@ -66,7 +66,7 @@ pub async fn fields_follow_the_theme(driver: &mut TestDriver, _: &mut Track) -> 
         "the select has no chevron: {image}"
     );
 
-    let number = driver.find_first("input.input-number").await?;
+    let number = driver.find_first("input.track-input-number").await?;
     let appearance = number.css("appearance").await?;
     ensure!(
         appearance == "textfield",
@@ -89,7 +89,10 @@ pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Tr
     open_page(driver, "Sync").await?;
 
     ensure!(
-        driver.count("#content .clickable:not(button, a)").await? == 0,
+        driver
+            .count("#content .track-clickable:not(button, a)")
+            .await?
+            == 0,
         "something clickable is neither a button nor a link"
     );
 
@@ -256,16 +259,20 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
     for (page, headings) in pages {
         open_page(driver, page).await?;
         match headings {
-            [one] => driver.wait_texts(".settings h2", [*one]).await?,
-            [one, two] => driver.wait_texts(".settings h2", [*one, *two]).await?,
+            [one] => driver.wait_texts(".track-settings h2", [*one]).await?,
+            [one, two] => {
+                driver
+                    .wait_texts(".track-settings h2", [*one, *two])
+                    .await?
+            }
             _ => bail!("unexpected headings {headings:?}"),
         }
 
         // From the column's edge, which a page tall enough to scroll moves.
-        let column = driver.find_one_by(".settings").await?.rect().await?.x;
+        let column = driver.find_one_by(".track-settings").await?.rect().await?.x;
 
         for control in driver
-            .find_all(By::Css(".settings .sockel-form-control"))
+            .find_all(By::Css(".track-settings .sockel-form-control"))
             .await?
         {
             lefts.push(control.rect().await?.x - column);
@@ -284,16 +291,20 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
 /// replaces the list and leads back to it.
 pub async fn phones_list_the_settings_pages(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.find_one_by(".toolbar-toggle").await?.click().await?;
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-toggle")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
 
     driver
         .wait_texts(
-            ".settings-nav-item",
+            ".track-settings-nav-item",
             [
                 "Preferences",
                 "Site",
@@ -306,18 +317,28 @@ pub async fn phones_list_the_settings_pages(driver: &mut TestDriver, _: &mut Tra
         )
         .await?;
     ensure!(
-        !driver.find_one_by(".settings").await?.visible().await?,
+        !driver
+            .find_one_by(".track-settings")
+            .await?
+            .visible()
+            .await?,
         "a page shows beside the list on a phone"
     );
 
     driver
-        .find_one_by(".settings-nav-item[title='API keys']")
+        .find_one_by(".track-settings-nav-item[title='API keys']")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".settings h2", ["API keys"]).await?;
+    driver
+        .wait_texts(".track-settings h2", ["API keys"])
+        .await?;
     ensure!(
-        !driver.find_one_by(".settings-nav").await?.visible().await?,
+        !driver
+            .find_one_by(".track-settings-nav")
+            .await?
+            .visible()
+            .await?,
         "the list stays beside a page on a phone"
     );
 
@@ -326,7 +347,9 @@ pub async fn phones_list_the_settings_pages(driver: &mut TestDriver, _: &mut Tra
         .await?
         .click()
         .await?;
-    driver.find_one_by(".settings-nav-item[title=Site]").await?;
+    driver
+        .find_one_by(".track-settings-nav-item[title=Site]")
+        .await?;
     Ok(())
 }
 
@@ -360,14 +383,14 @@ pub async fn tab_completes_the_time_zone(driver: &mut TestDriver, _: &mut Track)
 /// Opens a settings page from the list of pages.
 pub(super) async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
     driver
-        .find_one_by(&format!(".settings-nav-item[title='{title}']"))
+        .find_one_by(&format!(".track-settings-nav-item[title='{title}']"))
         .await?
         .click()
         .await?;
     driver
         .wait_until("the page to open", async || {
             let current = driver
-                .find_one_by(&format!(".settings-nav-item[title='{title}']"))
+                .find_one_by(&format!(".track-settings-nav-item[title='{title}']"))
                 .await?
                 .attr("aria-current")
                 .await?;
@@ -378,7 +401,7 @@ pub(super) async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
 
 pub(super) async fn open_settings(driver: &TestDriver) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
@@ -441,7 +464,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
             .find_all_attrs(
-                ".sockel-reorder:not(.xem-lookup, .numberings) .logo",
+                ".sockel-reorder:not(.xem-lookup, .numberings) .track-logo",
                 "class",
             )
             .await
@@ -511,11 +534,13 @@ pub async fn reorders_xem_lookup(driver: &mut TestDriver, _: &mut Track) -> Resu
     open_page(driver, "Sources & dates").await?;
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
-        driver.find_all_attrs(".xem-lookup .logo", "class").await
+        driver
+            .find_all_attrs(".xem-lookup .track-logo", "class")
+            .await
     };
 
-    let tvdb = "logo tvdb".to_owned();
-    let anidb = "logo anidb".to_owned();
+    let tvdb = "track-logo track-tvdb".to_owned();
+    let anidb = "track-logo track-anidb".to_owned();
 
     driver
         .wait_until("TheTVDB before AniDB", async || {

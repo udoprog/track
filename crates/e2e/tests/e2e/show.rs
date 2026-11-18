@@ -4,15 +4,21 @@ use super::Track;
 
 /// Open the seeded show from the dashboard.
 pub(crate) async fn open_show(driver: &TestDriver) -> Result<()> {
-    driver.find_one_by(".pending-title").await?.click().await?;
+    driver
+        .find_one_by(".track-pending-title")
+        .await?
+        .click()
+        .await?;
 
-    driver.wait_texts(".detail-title", ["Seeded Show"]).await
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await
 }
 
 /// The show page opens on a heading with the title and first-air year.
 pub async fn has_a_heading(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
-    driver.wait_texts(".detail-meta", ["2023"]).await
+    driver.wait_texts(".track-detail-meta", ["2023"]).await
 }
 
 /// An episode keeps its main actions in view and the rest in its menu.
@@ -56,7 +62,7 @@ pub async fn episodes_show_their_details(driver: &mut TestDriver, _: &mut Track)
             "the watched episode to say when it was watched",
             async || {
                 let meta = driver
-                    .rendered_texts(&format!("{first} .episode-meta"))
+                    .rendered_texts(&format!("{first} .track-episode-meta"))
                     .await?;
                 Ok(meta.iter().any(|m| m.contains("Watched")))
             },
@@ -64,7 +70,8 @@ pub async fn episodes_show_their_details(driver: &mut TestDriver, _: &mut Track)
         .await?;
 
     ensure!(
-        driver.count(".episode .screenshot").await? == driver.count(".episode").await?,
+        driver.count(".track-episode .track-screenshot").await?
+            == driver.count(".track-episode").await?,
         "an episode is missing its still"
     );
     ensure!(
@@ -80,7 +87,9 @@ pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Tra
 
     driver
         .wait_until("the season to read 0/3 watched", async || {
-            let texts = driver.find_all_texts(".season-row.current").await?;
+            let texts = driver
+                .find_all_texts(".track-season-row.track-current")
+                .await?;
             Ok(texts.iter().any(|text| text.contains("0/3")))
         })
         .await
@@ -89,7 +98,9 @@ pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Tra
 /// The episode rail beside the show page gives way on a phone.
 pub async fn phones_have_no_episode_rail(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
-    driver.find_one_by("[data-testid=outline].visible").await?;
+    driver
+        .find_one_by("[data-testid=outline].track-visible")
+        .await?;
 
     driver.set_window_size(400, 850).await?;
 
@@ -107,7 +118,9 @@ pub async fn phones_have_no_episode_rail(driver: &mut TestDriver, _: &mut Track)
 pub async fn phones_do_not_scroll_sideways(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
     driver.set_window_size(400, 850).await?;
-    driver.find_first(".episode [title='Mark watched']").await?;
+    driver
+        .find_first(".track-episode [title='Mark watched']")
+        .await?;
 
     let ret = driver
         .webdriver()
@@ -129,15 +142,19 @@ pub async fn phones_do_not_scroll_sideways(driver: &mut TestDriver, _: &mut Trac
 /// overview.
 pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
-    driver.find_first(".episode [title='Mark watched']").await?;
+    driver
+        .find_first(".track-episode [title='Mark watched']")
+        .await?;
     driver.snapshot("wide-show-backdrop").await?;
 
     driver.set_window_size(400, 850).await?;
-    driver.find_first(".episode [title='Mark watched']").await?;
+    driver
+        .find_first(".track-episode [title='Mark watched']")
+        .await?;
 
     ensure!(
         driver
-            .find_one_by(".detail-hero-image")
+            .find_one_by(".track-detail-hero-image")
             .await?
             .visible()
             .await?,
@@ -145,7 +162,7 @@ pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Trac
     );
 
     let copies = driver
-        .rendered_texts(".detail-layout .backdrop")
+        .rendered_texts(".track-detail-layout .track-backdrop")
         .await?
         .len();
     ensure!(
@@ -186,7 +203,7 @@ pub async fn menus_close_on_an_outside_click(driver: &mut TestDriver, _: &mut Tr
 
     // A season's heading, away from the menu.
     driver
-        .find_first("[data-testid='detail-content'] .toolbar h2")
+        .find_first("[data-testid='detail-content'] .track-toolbar h2")
         .await?
         .click()
         .await?;
@@ -417,7 +434,7 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
     wait_episode_reads(driver, "S01E01", "Watched once").await?;
     open_history(driver, "S01E01").await?;
     let remove = driver
-        .find_one_by(".sockel-dialog .watch-row [title=Remove]")
+        .find_one_by(".sockel-dialog .track-watch-row [title=Remove]")
         .await?;
     remove.focus().await?;
     remove.send_keys("\u{E007}").await?;
@@ -432,7 +449,7 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
         .send_keys("\u{E00C}")
         .await?;
     driver.wait_count(".sockel-confirm-popover", 0).await?;
-    ensure!(driver.count(".sockel-dialog .watch-history").await? == 1);
+    ensure!(driver.count(".sockel-dialog .track-watch-history").await? == 1);
     let back = focused_title(driver).await?;
     ensure!(back == "Remove", "focus went back to {back:?}");
     Ok(())
@@ -483,13 +500,15 @@ pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track
 /// Mark watched is the same primary button on the dashboard and on the show.
 pub async fn mark_watched_is_one_colour(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     let card = driver
-        .find_first(".pending-item [title='Mark watched']")
+        .find_first(".track-pending-item [title='Mark watched']")
         .await?;
     ensure!(card.attr("class").await?.contains("primary"));
 
     open_show(driver).await?;
 
-    let episode = driver.find_first(".episode [title='Mark watched']").await?;
+    let episode = driver
+        .find_first(".track-episode [title='Mark watched']")
+        .await?;
     let class = episode.attr("class").await?;
     ensure!(
         class.contains("primary") && !class.contains("success"),
@@ -509,19 +528,19 @@ pub async fn seasons_list_beside_the_episodes(
 
     driver
         .wait_texts(
-            ".season-list .season-name",
+            ".track-season-list .track-season-name",
             ["Season 1", "Season 2", "Specials"],
         )
         .await?;
 
-    let list = driver.find_one_by(".season-list").await?;
+    let list = driver.find_one_by(".track-season-list").await?;
     ensure!(
         list.css("position").await? == "sticky",
         "the season list scrolls away"
     );
     ensure!(
         driver
-            .find_one_by(".season-chips")
+            .find_one_by(".track-season-chips")
             .await?
             .css("display")
             .await?
@@ -529,31 +548,37 @@ pub async fn seasons_list_beside_the_episodes(
         "the phone season chips show on a wide screen"
     );
     ensure!(
-        driver.count(".season-list .season-progress").await? == 3,
+        driver
+            .count(".track-season-list .track-season-progress")
+            .await?
+            == 3,
         "not every season shows its progress bar"
     );
 
     driver
         .wait_texts(
-            ".season-list [aria-current=page] .season-name",
+            ".track-season-list [aria-current=page] .track-season-name",
             ["Season 1"],
         )
         .await?;
 
     driver
-        .find_one_by(".season-list [title='Show Season 2']")
+        .find_one_by(".track-season-list [title='Show Season 2']")
         .await?
         .click()
         .await?;
 
     driver
         .wait_texts(
-            ".season-list [aria-current=page] .season-name",
+            ".track-season-list [aria-current=page] .track-season-name",
             ["Season 2"],
         )
         .await?;
     driver
-        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 2"],
+        )
         .await
 }
 
@@ -564,22 +589,25 @@ pub async fn phones_pick_seasons_from_chips(driver: &mut TestDriver, _: &mut Tra
 
     driver
         .wait_until("the season chips to show instead of the list", async || {
-            let chips = driver.find_one_by(".season-chips").await?;
-            let list = driver.find_one_by(".season-list").await?;
+            let chips = driver.find_one_by(".track-season-chips").await?;
+            let list = driver.find_one_by(".track-season-list").await?;
             Ok(chips.css("display").await? == "flex" && list.css("display").await? == "none")
         })
         .await?;
 
-    ensure!(driver.count(".season-chips button").await? == 3);
+    ensure!(driver.count(".track-season-chips button").await? == 3);
 
     driver
-        .find_one_by(".season-chips [title='Show Specials']")
+        .find_one_by(".track-season-chips [title='Show Specials']")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Specials"])
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Specials"],
+        )
         .await
 }
 
@@ -649,7 +677,9 @@ async fn open_history(driver: &TestDriver, code: &str) -> Result<()> {
         .await?
         .click()
         .await?;
-    driver.find_one_by(".sockel-dialog .watch-history").await?;
+    driver
+        .find_one_by(".sockel-dialog .track-watch-history")
+        .await?;
     Ok(())
 }
 
@@ -658,7 +688,7 @@ async fn wait_episode_reads(driver: &TestDriver, code: &str, text: &str) -> Resu
     driver
         .wait_until(format_args!("{code} to read {text:?}"), async || {
             let meta = driver
-                .rendered_texts(&format!("[id='{code}'] .episode-meta"))
+                .rendered_texts(&format!("[id='{code}'] .track-episode-meta"))
                 .await?;
             Ok(meta.iter().any(|m| {
                 m.split_whitespace()
@@ -722,7 +752,7 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
     driver.wait_count(".sockel-dialog", 0).await?;
 
     open_history(driver, "S01E02").await?;
-    ensure!(driver.count(".sockel-dialog .watch-row").await? == 1);
+    ensure!(driver.count(".sockel-dialog .track-watch-row").await? == 1);
 
     driver
         .find_one_by(".sockel-dialog [title=Remove]")
@@ -736,7 +766,9 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
         .await?;
 
     // With its only watch gone the history has nothing left to show.
-    driver.wait_count(".sockel-dialog .watch-row", 0).await
+    driver
+        .wait_count(".sockel-dialog .track-watch-row", 0)
+        .await
 }
 
 /// The show's tracking toggle is named for a show and its title says whether
@@ -806,11 +838,11 @@ pub async fn translations_sit_beside_their_language(
         .await?;
 
     driver
-        .wait_texts(".translations h3", ["Title", "Overview"])
+        .wait_texts(".track-translations h3", ["Title", "Overview"])
         .await?;
 
     let language = driver
-        .find_first(".translation-language")
+        .find_first(".track-translation-language")
         .await?
         .rect()
         .await?;
@@ -848,7 +880,10 @@ pub async fn air_dates_explain_the_default_quietly(
         .find_one_by(".sockel-dialog .sockel-form-row .sockel-field-hint")
         .await?;
     ensure!(
-        driver.count(".sockel-dialog .exclamation-triangle").await? == 0,
+        driver
+            .count(".sockel-dialog .track-icon-exclamation-triangle")
+            .await?
+            == 0,
         "the default still carries a warning sign"
     );
     Ok(())
@@ -878,7 +913,7 @@ pub async fn season_overview_switches_language(
     driver
         .wait_until("the Swedish overview to show", async || {
             let texts = driver
-                .find_all_texts(&format!("{season} .overview"))
+                .find_all_texts(&format!("{season} .track-overview"))
                 .await?;
             Ok(texts.iter().any(|t| t.contains("Den första säsongen")))
         })
@@ -902,7 +937,10 @@ pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -
         .await?;
 
     driver
-        .wait_texts(".sockel-dialog .gallery-meta .badge", ["Current"])
+        .wait_texts(
+            ".sockel-dialog .track-gallery-meta .track-badge",
+            ["Current"],
+        )
         .await?;
 
     for title in ["Pick best poster", "Clear poster"] {
@@ -915,7 +953,7 @@ pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -
     }
 
     let meta = driver
-        .rendered_texts(".sockel-dialog .gallery-meta")
+        .rendered_texts(".sockel-dialog .track-gallery-meta")
         .await?;
     ensure!(
         meta.iter().all(|m| !m.chars().any(|c| c.is_ascii_digit())),
@@ -929,7 +967,7 @@ pub async fn detail_poster_is_rounded(driver: &mut TestDriver, _: &mut Track) ->
     open_show(driver).await?;
 
     let radius = driver
-        .find_one_by(".detail-sidebar .poster")
+        .find_one_by(".track-detail-sidebar .track-poster")
         .await?
         .css("border-top-left-radius")
         .await?;
@@ -1021,7 +1059,9 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
             .await?
             .click()
             .await?;
-        driver.wait_count(".sockel-dialog .form .hint", 1).await?;
+        driver
+            .wait_count(".sockel-dialog .track-form .track-hint", 1)
+            .await?;
 
         let input = driver
             .find_one_by(".sockel-dialog input[aria-label=Identifier]")
@@ -1036,7 +1076,9 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
                 .await?
                 .click()
                 .await?;
-            driver.wait_count(".sockel-dialog .field-error", 1).await?;
+            driver
+                .wait_count(".sockel-dialog .track-field-error", 1)
+                .await?;
             input.clear().await?;
         }
 
@@ -1048,7 +1090,7 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
             .await?;
         driver
             .wait_count(
-                &format!(".sockel-dialog .remote .logo.{source}"),
+                &format!(".sockel-dialog .remote .track-logo.track-{source}"),
                 if value == "18603" { 2 } else { 1 },
             )
             .await?;
@@ -1065,26 +1107,28 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
 
     ensure!(
         driver
-            .count(".sockel-dialog a[data-testid='remote-link'][href='https://anidb.net/anime/17617'] .logo.anidb")
+            .count(".sockel-dialog a[data-testid='remote-link'][href='https://anidb.net/anime/17617'] .track-logo.track-anidb")
             .await?
             == 1
     );
     ensure!(
         driver
-            .count(".sockel-dialog a[data-testid='remote-link'] .logo.scene")
+            .count(".sockel-dialog a[data-testid='remote-link'] .track-logo.track-scene")
             .await?
             == 0
     );
     ensure!(
         driver
-            .count(".sockel-dialog a[data-testid='remote-link'] .logo.xem")
+            .count(".sockel-dialog a[data-testid='remote-link'] .track-logo.track-xem")
             .await?
             == 0
     );
 
     for source in ["anidb", "scene", "xem"] {
         let width = driver
-            .find_first(&format!(".sockel-dialog .remote .logo.{source}"))
+            .find_first(&format!(
+                ".sockel-dialog .remote .track-logo.track-{source}"
+            ))
             .await?
             .css("width")
             .await?;
@@ -1105,13 +1149,13 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
 
     driver
         .wait_count(
-            ".detail-sources a[href='https://anidb.net/anime/18603'] .logo.anidb",
+            ".track-detail-sources a[href='https://anidb.net/anime/18603'] .track-logo.track-anidb",
             1,
         )
         .await?;
     ensure!(
         driver
-            .count(".detail-sources .logo.scene, .detail-sources .logo.xem")
+            .count(".track-detail-sources .track-logo.track-scene, .track-detail-sources .track-logo.track-xem")
             .await?
             == 0
     );
@@ -1138,12 +1182,17 @@ pub async fn picked_episodes_are_marked_together(
         .await?;
 
     driver
-        .wait_texts(".selection-count", ["3 episodes selected"])
+        .wait_texts(".track-selection-count", ["3 episodes selected"])
         .await?;
-    ensure!(driver.count(".episode-pick[aria-pressed=true]").await? == 3);
+    ensure!(
+        driver
+            .count(".track-episode-pick[aria-pressed=true]")
+            .await?
+            == 3
+    );
 
     driver
-        .find_one_by(".selection-bar [title='Mark the selected episodes watched']")
+        .find_one_by(".track-selection-bar [title='Mark the selected episodes watched']")
         .await?
         .click()
         .await?;
@@ -1153,7 +1202,7 @@ pub async fn picked_episodes_are_marked_together(
         .click()
         .await?;
 
-    driver.wait_count(".selection-bar", 0).await?;
+    driver.wait_count(".track-selection-bar", 0).await?;
 
     for code in ["S01E01", "S01E02", "S01E03"] {
         driver
@@ -1174,7 +1223,7 @@ pub async fn remaining_episodes_advance_pending(
 ) -> Result<()> {
     open_show(driver).await?;
     driver
-        .find_one_by("[id='S01E01'] .item-inline[title='Next episode']")
+        .find_one_by("[id='S01E01'] .track-item-inline[title='Next episode']")
         .await?;
 
     driver
@@ -1197,23 +1246,28 @@ pub async fn remaining_episodes_advance_pending(
     }
 
     driver
-        .wait_count(".item-inline[title='Next episode']", 0)
+        .wait_count(".track-item-inline[title='Next episode']", 0)
         .await?;
 
     driver
-        .find_one_by(".season-list [title='Show Season 2']")
+        .find_one_by(".track-season-list [title='Show Season 2']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by("[id='S02E01'] .item-inline[title='Next episode']")
+        .find_one_by("[id='S02E01'] .track-item-inline[title='Next episode']")
         .await?;
 
     driver.reload().await?;
     driver
-        .find_one_by("[id='S02E01'] .item-inline[title='Next episode']")
+        .find_one_by("[id='S02E01'] .track-item-inline[title='Next episode']")
         .await?;
-    ensure!(driver.count(".item-inline[title='Next episode']").await? == 1);
+    ensure!(
+        driver
+            .count(".track-item-inline[title='Next episode']")
+            .await?
+            == 1
+    );
     Ok(())
 }
 
@@ -1223,28 +1277,31 @@ pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Re
 
     let still = driver.find_one_by("[title='Select S01E01']").await?;
     still.click().await?;
-    driver.find_one_by(".selection-bar").await?;
+    driver.find_one_by(".track-selection-bar").await?;
 
     still.send_keys("\u{E00C}").await?;
-    driver.wait_count(".selection-bar", 0).await?;
+    driver.wait_count(".track-selection-bar", 0).await?;
 
     driver
         .find_one_by("[title='Select S01E02']")
         .await?
         .click()
         .await?;
-    driver.find_one_by(".selection-bar").await?;
+    driver.find_one_by(".track-selection-bar").await?;
 
     driver
-        .find_one_by(".season-list [title='Show Season 2']")
+        .find_one_by(".track-season-list [title='Show Season 2']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 2"],
+        )
         .await?;
     ensure!(
-        driver.count(".selection-bar").await? == 0,
+        driver.count(".track-selection-bar").await? == 0,
         "the selection survived the season switch"
     );
     Ok(())
@@ -1266,12 +1323,15 @@ pub async fn season_names_appear_on_switching(
     driver.find_one_by("#S01E05").await?;
 
     driver
-        .find_one_by(".season-list [title='Show Season 2']")
+        .find_one_by(".track-season-list [title='Show Season 2']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 2"],
+        )
         .await?;
     driver.find_one_by("#S02E02").await?;
     Ok(())
@@ -1289,8 +1349,8 @@ pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> 
             .await?;
     }
     for selector in [
-        "#page > .toolbar .toolbar-dropdown > button",
-        "[data-testid='detail-content'] .toolbar-dropdown > :is(button, a)",
+        "#page > .track-toolbar .track-toolbar-dropdown > button",
+        "[data-testid='detail-content'] .track-toolbar-dropdown > :is(button, a)",
     ] {
         super::navigation::ensure_menu_rows_align(driver, selector).await?;
     }
@@ -1312,25 +1372,25 @@ pub async fn rail_colours_watched_apart_from_pending(
 ) -> Result<()> {
     open_show(driver).await?;
     driver
-        .find_one_by("[data-testid=outline] .outline-sample.pending")
+        .find_one_by("[data-testid=outline] .track-outline-sample.track-pending")
         .await?;
 
     driver
-        .find_first(".episode [title='Mark watched']")
+        .find_first(".track-episode [title='Mark watched']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by("[data-testid=outline] .outline-sample.seen")
+        .find_one_by("[data-testid=outline] .track-outline-sample.track-seen")
         .await?;
 
     let seen = driver
-        .find_one_by("[data-testid=outline] .outline-sample.seen")
+        .find_one_by("[data-testid=outline] .track-outline-sample.track-seen")
         .await?
         .css("color")
         .await?;
     let pending = driver
-        .find_one_by("[data-testid=outline] .outline-sample.pending")
+        .find_one_by("[data-testid=outline] .track-outline-sample.track-pending")
         .await?
         .css("color")
         .await?;
@@ -1371,9 +1431,9 @@ pub async fn tvmaze_remote_is_added(driver: &mut TestDriver, _: &mut Track) -> R
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .remote .logo.tvmaze", 1)
+        .wait_count(".sockel-dialog .remote .track-logo.track-tvmaze", 1)
         .await?;
-    ensure!(driver.count(".sockel-dialog .field-error").await? == 0);
+    ensure!(driver.count(".sockel-dialog .track-field-error").await? == 0);
     Ok(())
 }
 
@@ -1386,7 +1446,7 @@ async fn wait_spans(driver: &TestDriver, expected: &[&str]) -> Result<()> {
             let ret = driver
                 .webdriver()
                 .execute(
-                    "return [...document.querySelectorAll('.sockel-dialog .numbering-range-summary .numbering-span')].map(e => e.textContent);",
+                    "return [...document.querySelectorAll('.sockel-dialog .track-numbering-range-summary .track-numbering-span')].map(e => e.textContent);",
                     Vec::new(),
                 )
                 .await?;
@@ -1409,7 +1469,7 @@ async fn values(driver: &TestDriver, selector: &str) -> Result<Vec<String>> {
 async fn pick(driver: &TestDriver, label: &str) -> Result<()> {
     driver
         .find_one_by(&format!(
-            ".sockel-dialog .numbering-ep[aria-label='{label}']"
+            ".sockel-dialog .track-numbering-ep[aria-label='{label}']"
         ))
         .await?
         .click()
@@ -1422,13 +1482,13 @@ async fn pick(driver: &TestDriver, label: &str) -> Result<()> {
 async fn suggest_from(driver: &TestDriver, label: &str) -> Result<()> {
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-basis-name",
+            ".sockel-dialog .track-numbering-basis-name",
             ["TheTVDB · Scene · AniDB", "Trakt"],
         )
         .await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-basis-option .text-muted",
+            ".sockel-dialog .track-numbering-basis-option .track-text-muted",
             ["5 episodes in 2 ranges", "4 episodes in 1 range"],
         )
         .await?;
@@ -1438,7 +1498,7 @@ async fn suggest_from(driver: &TestDriver, label: &str) -> Result<()> {
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-basis", 0)
+        .wait_count(".sockel-dialog .track-numbering-basis", 0)
         .await
 }
 
@@ -1460,14 +1520,14 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
 
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-warning",
+            ".sockel-dialog .track-numbering-warning",
             ["TMDB Season 1 has 5 episodes but TheTVDB Season 1 has 3, so from S01E04 on, other numberings would be wrong. Compare in the range editor"],
         )
         .await?;
 
     // Automatic numbering, drawn: TheTVDB S1 has no E4-E5 and S2 is unreached.
     driver
-        .find_one_by(".sockel-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .track-numbering-warning .track-link-button")
         .await?
         .click()
         .await?;
@@ -1478,7 +1538,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-status .numbering-missing",
+            ".sockel-dialog .track-numbering-status .track-numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5, so TMDB S1 E4–E5 get no other numbers."],
         )
         .await?;
@@ -1488,10 +1548,15 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
             ["No TMDB episode maps to TheTVDB S2 E1–E2."],
         )
         .await?;
-    ensure!(driver.count(".sockel-dialog .numbering-ep.missing").await? == 2);
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-ep:not(:disabled)")
+            .count(".sockel-dialog .track-numbering-ep.track-missing")
+            .await?
+            == 2
+    );
+    ensure!(
+        driver
+            .count(".sockel-dialog .track-numbering-ep:not(:disabled)")
             .await?
             == 0
     );
@@ -1500,7 +1565,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     // asks which to follow; the suggestion shows in the same view before
     // anything is saved.
     driver
-        .find_one_by(".sockel-dialog .numbering-status [title='Suggest from episode order']")
+        .find_one_by(".sockel-dialog .track-numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
@@ -1508,10 +1573,13 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"]).await?;
     // Two ranges, each banded across the four gaps between five columns.
     driver
-        .wait_count(".sockel-dialog .numbering-band:not(.open-end)", 8)
+        .wait_count(
+            ".sockel-dialog .track-numbering-band:not(.track-open-end)",
+            8,
+        )
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-note", 1)
+        .wait_count(".sockel-dialog .track-numbering-note", 1)
         .await?;
     driver
         .wait_texts(
@@ -1525,27 +1593,27 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     pick(driver, "TMDB S1 E4").await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-range.selected[aria-label='Range 2']",
+            ".sockel-dialog .track-numbering-range.track-selected[aria-label='Range 2']",
             1,
         )
         .await?;
-    let fields = ".sockel-dialog .numbering-range.selected input";
+    let fields = ".sockel-dialog .track-numbering-range.track-selected input";
     ensure!(values(driver, fields).await? == ["1", "4", "", "2", "1"]);
 
     pick(driver, "TMDB S1 E4").await?;
     pick(driver, "TMDB S1 E3").await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-errors",
+            ".sockel-dialog .track-numbering-errors",
             ["E3 is already in the range S1 E1–E3. TMDB ranges must not overlap."],
         )
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-band.invalid", 4)
+        .wait_count(".sockel-dialog .track-numbering-band.track-invalid", 4)
         .await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-ep.overlap[aria-label='TMDB S1 E3']",
+            ".sockel-dialog .track-numbering-ep.track-overlap[aria-label='TMDB S1 E3']",
             1,
         )
         .await?;
@@ -1556,7 +1624,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     pick(driver, "TMDB S1 E4").await?;
     pick(driver, "TMDB S1 E5").await?;
     driver
-        .wait_count(".sockel-dialog .numbering-errors", 0)
+        .wait_count(".sockel-dialog .track-numbering-errors", 0)
         .await?;
     ensure!(values(driver, fields).await? == ["1", "4", "5", "2", "1"]);
 
@@ -1567,10 +1635,10 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 1)
+        .wait_count(".sockel-dialog .track-numbering-range", 1)
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-ep.unmapped", 2)
+        .wait_count(".sockel-dialog .track-numbering-ep.track-unmapped", 2)
         .await?;
     driver
         .wait_texts(
@@ -1589,12 +1657,12 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     // which runs past what XEM knows until it is pointed at TheTVDB S2.
     pick(driver, "TMDB S1 E4").await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 2)
+        .wait_count(".sockel-dialog .track-numbering-range", 2)
         .await?;
     pick(driver, "TMDB S1 E5").await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-range .numbering-missing",
+            ".sockel-dialog .track-numbering-range .track-numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5."],
         )
         .await?;
@@ -1602,7 +1670,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
 
     pick(driver, "TheTVDB S2 E1").await?;
     driver
-        .wait_count(".sockel-dialog .numbering-missing", 0)
+        .wait_count(".sockel-dialog .track-numbering-missing", 0)
         .await?;
     ensure!(values(driver, fields).await? == ["1", "4", "5", "2", "1"]);
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"]).await?;
@@ -1632,7 +1700,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 2)
+        .wait_count(".sockel-dialog .track-numbering-range", 2)
         .await?;
     driver
         .find_one_by(".sockel-dialog [title='Automatic: same as TheTVDB']")
@@ -1640,7 +1708,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 0)
+        .wait_count(".sockel-dialog .track-numbering-range", 0)
         .await?;
     driver
         .find_one_by(".sockel-dialog [title='Save']")
@@ -1648,7 +1716,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-warning", 1)
+        .wait_count(".sockel-dialog .track-numbering-warning", 1)
         .await?;
     driver
         .wait_until("the ranges to be cleared", async || {
@@ -1672,17 +1740,17 @@ pub async fn numbering_ranges_are_made_from_either_side(
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .track-numbering-warning .track-link-button")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_count(".sockel-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .track-numbering-map-source", 5)
         .await?;
     ensure!(
         driver
-            .find_all_attrs(".sockel-dialog .numbering-map-source", "title")
+            .find_all_attrs(".sockel-dialog .track-numbering-map-source", "title")
             .await?
             == ["TMDB", "TheTVDB", "Scene", "AniDB", "Trakt"]
     );
@@ -1693,15 +1761,20 @@ pub async fn numbering_ranges_are_made_from_either_side(
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-basis", 1)
+        .wait_count(".sockel-dialog .track-numbering-basis", 1)
         .await?;
-    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 0);
+    ensure!(
+        driver
+            .count(".sockel-dialog .track-numbering-range")
+            .await?
+            == 0
+    );
 
     suggest_from(driver, "Trakt").await?;
     wait_spans(driver, &["S1 E1–E4", "S1 E1–E4"]).await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-note",
+            ".sockel-dialog .track-numbering-note",
             ["Suggested from Trakt's episode order. Nothing is saved until you save."],
         )
         .await?;
@@ -1726,7 +1799,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
         .await?;
     pick(driver, "TheTVDB S1 E1").await?;
     pick(driver, "TheTVDB S1 E3").await?;
-    let fields = ".sockel-dialog .numbering-range.selected input";
+    let fields = ".sockel-dialog .track-numbering-range.track-selected input";
     ensure!(values(driver, fields).await? == ["1", "1", "3", "1", "1"]);
 
     driver
@@ -1748,7 +1821,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
     let title = async |label: &str| {
         driver
             .find_one_by(&format!(
-                ".sockel-dialog .numbering-ep[aria-label='{label}']"
+                ".sockel-dialog .track-numbering-ep[aria-label='{label}']"
             ))
             .await?
             .attr("title")
@@ -1767,7 +1840,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
     pick(driver, "Scene S2 E2").await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-range.selected[aria-label='Range 2']",
+            ".sockel-dialog .track-numbering-range.track-selected[aria-label='Range 2']",
             1,
         )
         .await?;
@@ -1775,12 +1848,12 @@ pub async fn numbering_ranges_are_made_from_either_side(
     // Five columns fit a phone without the modal scrolling sideways.
     driver.set_window_size(400, 850).await?;
     driver
-        .wait_count(".sockel-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .track-numbering-map-source", 5)
         .await?;
     let ret = driver
         .webdriver()
         .execute(
-            "const e = document.querySelector('.sockel-dialog .numbering-map-scroll'); return [e.scrollWidth, e.clientWidth];",
+            "const e = document.querySelector('.sockel-dialog .track-numbering-map-scroll'); return [e.scrollWidth, e.clientWidth];",
             Vec::new(),
         )
         .await?;
@@ -1813,7 +1886,7 @@ pub async fn numbering_warnings_fold_into_a_summary(
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .track-numbering-warning .track-link-button")
         .await?
         .click()
         .await?;
@@ -1832,31 +1905,39 @@ pub async fn numbering_warnings_fold_into_a_summary(
             .await?
             == 1
     );
-    ensure!(driver.count(".sockel-dialog .numbering-details").await? == 0);
+    ensure!(
+        driver
+            .count(".sockel-dialog .track-numbering-details")
+            .await?
+            == 0
+    );
 
     // The details unfold under Suggest, which stays where it was.
     let toggle = ".sockel-dialog .numbering-details-toggle";
     driver.find_one_by(toggle).await?.click().await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-details .numbering-warning",
+            ".sockel-dialog .track-numbering-details .track-numbering-warning",
             ["TMDB Season 1 has 5 episodes but TheTVDB Season 1 has 3, so from S01E04 on, other numberings would be wrong."],
         )
         .await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-details .numbering-missing",
+            ".sockel-dialog .track-numbering-details .track-numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5, so TMDB S1 E4–E5 get no other numbers."],
         )
         .await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-details .numbering-unreached",
+            ".sockel-dialog .track-numbering-details .numbering-unreached",
             ["No TMDB episode maps to TheTVDB S2 E1–E2."],
         )
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-tools + .numbering-details", 1)
+        .wait_count(
+            ".sockel-dialog .numbering-tools + .track-numbering-details",
+            1,
+        )
         .await?;
     driver.wait_texts(toggle, ["Hide details"]).await?;
     ensure!(
@@ -1870,7 +1951,7 @@ pub async fn numbering_warnings_fold_into_a_summary(
 
     driver.find_one_by(toggle).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-details", 0)
+        .wait_count(".sockel-dialog .track-numbering-details", 0)
         .await?;
 
     // Manual ranges fold the episodes no range maps under their count.
@@ -1896,7 +1977,7 @@ pub async fn numbering_warnings_fold_into_a_summary(
     driver.find_one_by(toggle).await?.click().await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-details .numbering-unmapped",
+            ".sockel-dialog .track-numbering-details .numbering-unmapped",
             ["Not mapped: S1 E4–E5."],
         )
         .await
@@ -1924,12 +2005,12 @@ pub async fn numbering_map_opens_when_seasons_line_up(
 
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-status .hint",
+            ".sockel-dialog .track-numbering-status .track-hint",
             ["Automatic numbering reads the show's episode codes as TheTVDB's, and its seasons line up."],
         )
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .track-numbering-map-source", 5)
         .await?;
     ensure!(
         driver
@@ -1937,7 +2018,12 @@ pub async fn numbering_map_opens_when_seasons_line_up(
             .await?
             == 1
     );
-    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 0);
+    ensure!(
+        driver
+            .count(".sockel-dialog .track-numbering-range")
+            .await?
+            == 0
+    );
     Ok(())
 }
 
@@ -1998,9 +2084,9 @@ pub async fn numbering_list_and_map_follow_each_other(
 
     open_show(driver).await?;
 
-    let last = ".sockel-dialog .numbering-range[aria-label='Range 32']";
-    let first_ep = ".sockel-dialog .numbering-ep[aria-label='TMDB S31 E1']";
-    let target_ep = ".sockel-dialog .numbering-ep[aria-label='TheTVDB S32 E1']";
+    let last = ".sockel-dialog .track-numbering-range[aria-label='Range 32']";
+    let first_ep = ".sockel-dialog .track-numbering-ep[aria-label='TMDB S31 E1']";
+    let target_ep = ".sockel-dialog .track-numbering-ep[aria-label='TheTVDB S32 E1']";
 
     let top = async || {
         driver
@@ -2023,7 +2109,7 @@ pub async fn numbering_list_and_map_follow_each_other(
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 32)
+        .wait_count(".sockel-dialog .track-numbering-range", 32)
         .await?;
     driver.find_one_by(first_ep).await?;
 
@@ -2032,19 +2118,21 @@ pub async fn numbering_list_and_map_follow_each_other(
         top().await?;
 
         // The list picks the last range: the map scrolls to its episodes.
-        ensure!(!in_view(driver, first_ep, Some(".numbering-map-scroll")).await?);
+        ensure!(!in_view(driver, first_ep, Some(".track-numbering-map-scroll")).await?);
         driver
             .find_one_by(".sockel-dialog [title='Edit range 32']")
             .await?
             .click()
             .await?;
-        driver.wait_count(&format!("{last}.selected"), 1).await?;
+        driver
+            .wait_count(&format!("{last}.track-selected"), 1)
+            .await?;
         ensure!(
-            in_view(driver, first_ep, Some(".numbering-map-scroll")).await?,
+            in_view(driver, first_ep, Some(".track-numbering-map-scroll")).await?,
             "the map did not scroll to TMDB S31 E1 at {width}px"
         );
         ensure!(
-            in_view(driver, target_ep, Some(".numbering-map-scroll")).await?,
+            in_view(driver, target_ep, Some(".track-numbering-map-scroll")).await?,
             "the map did not scroll to TheTVDB S32 E1 at {width}px"
         );
 
@@ -2056,16 +2144,18 @@ pub async fn numbering_list_and_map_follow_each_other(
             .click()
             .await?;
         driver
-            .wait_count(".sockel-dialog .numbering-range.selected", 0)
+            .wait_count(".sockel-dialog .track-numbering-range.track-selected", 0)
             .await?;
         top().await?;
         ensure!(!in_view(driver, last, None).await?);
         driver
-            .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S31 E3']")
+            .find_one_by(".sockel-dialog .track-numbering-ep[aria-label='TMDB S31 E3']")
             .await?
             .click()
             .await?;
-        driver.wait_count(&format!("{last}.selected"), 1).await?;
+        driver
+            .wait_count(&format!("{last}.track-selected"), 1)
+            .await?;
         ensure!(
             in_view(driver, last, None).await?,
             "the list did not scroll to range 32 at {width}px"
@@ -2077,7 +2167,7 @@ pub async fn numbering_list_and_map_follow_each_other(
             .click()
             .await?;
         driver
-            .wait_count(".sockel-dialog .numbering-range.selected", 0)
+            .wait_count(".sockel-dialog .track-numbering-range.track-selected", 0)
             .await?;
     }
 
@@ -2114,7 +2204,7 @@ pub async fn numbering_map_names_the_season_in_view(
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S31 E1']")
+        .find_one_by(".sockel-dialog .track-numbering-ep[aria-label='TMDB S31 E1']")
         .await?;
 
     let checked = |label: &str, season: &str| {
@@ -2140,8 +2230,8 @@ pub async fn numbering_map_names_the_season_in_view(
         driver
             .webdriver()
             .execute(
-                "const s = document.querySelector('.sockel-dialog .numbering-map-scroll'); \
-                 const e = document.querySelector(\".sockel-dialog .numbering-ep[aria-label='TMDB S10 E1']\"); \
+                "const s = document.querySelector('.sockel-dialog .track-numbering-map-scroll'); \
+                 const e = document.querySelector(\".sockel-dialog .track-numbering-ep[aria-label='TMDB S10 E1']\"); \
                  s.scrollTop += e.getBoundingClientRect().top - s.getBoundingClientRect().top - 13;",
                 Vec::new(),
             )
@@ -2163,8 +2253,8 @@ pub async fn numbering_map_names_the_season_in_view(
         ensure!(
             in_view(
                 driver,
-                ".sockel-dialog .numbering-ep[aria-label='TMDB S20 E1']",
-                Some(".numbering-map-scroll")
+                ".sockel-dialog .track-numbering-ep[aria-label='TMDB S20 E1']",
+                Some(".track-numbering-map-scroll")
             )
             .await?,
             "the map did not scroll to TMDB S20 at {width}px"
@@ -2173,7 +2263,7 @@ pub async fn numbering_map_names_the_season_in_view(
         let ret = driver
             .webdriver()
             .execute(
-                "const e = document.querySelector('.sockel-dialog .numbering-map-head'); return [e.scrollWidth, e.clientWidth];",
+                "const e = document.querySelector('.sockel-dialog .track-numbering-map-head'); return [e.scrollWidth, e.clientWidth];",
                 Vec::new(),
             )
             .await?;
@@ -2205,7 +2295,7 @@ pub async fn numbering_ranges_are_left_open(
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .track-numbering-warning .track-link-button")
         .await?
         .click()
         .await?;
@@ -2219,10 +2309,10 @@ pub async fn numbering_ranges_are_left_open(
     // The open end fades over the episode after the last in each of the four
     // gaps, past what TMDB and XEM know.
     driver
-        .wait_count(".sockel-dialog .numbering-band.open-end", 4)
+        .wait_count(".sockel-dialog .track-numbering-band.track-open-end", 4)
         .await?;
     let tail = driver
-        .find_one_by(".sockel-dialog .numbering-ep.open-end[aria-label='TMDB S1 E6']")
+        .find_one_by(".sockel-dialog .track-numbering-ep.track-open-end[aria-label='TMDB S1 E6']")
         .await?;
     ensure!(tail.text().await? == "E6…");
     ensure!(
@@ -2230,7 +2320,7 @@ pub async fn numbering_ranges_are_left_open(
     );
     driver
         .wait_count(
-            ".sockel-dialog .numbering-ep.open-end[aria-label='TheTVDB S2 E3']",
+            ".sockel-dialog .track-numbering-ep.track-open-end[aria-label='TheTVDB S2 E3']",
             1,
         )
         .await?;
@@ -2247,7 +2337,7 @@ pub async fn numbering_ranges_are_left_open(
     driver.find_one_by(&open_end(1)).await?.click().await?;
     driver
         .wait_texts(
-            ".sockel-dialog .numbering-errors",
+            ".sockel-dialog .track-numbering-errors",
             ["E4 is already in the range S1 E1–. TMDB ranges must not overlap. An open range must be the last in its TMDB season."],
         )
         .await?;
@@ -2256,7 +2346,7 @@ pub async fn numbering_ranges_are_left_open(
         .await?;
     driver.find_one_by(&open_end(1)).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-errors", 0)
+        .wait_count(".sockel-dialog .track-numbering-errors", 0)
         .await?;
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"]).await?;
 
@@ -2270,12 +2360,12 @@ pub async fn numbering_ranges_are_left_open(
     driver.find_one_by(&open_end(2)).await?.click().await?;
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"]).await?;
     driver
-        .wait_count(".sockel-dialog .numbering-band.open-end", 0)
+        .wait_count(".sockel-dialog .track-numbering-band.track-open-end", 0)
         .await?;
     driver.find_one_by(&open_end(2)).await?.click().await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-range.selected [aria-label='Range 2 last episode']:disabled",
+            ".sockel-dialog .track-numbering-range.track-selected [aria-label='Range 2 last episode']:disabled",
             1,
         )
         .await?;
@@ -2321,12 +2411,12 @@ pub async fn numbering_ranges_are_left_open(
         )
         .await?;
     let added = driver
-        .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E6']")
+        .find_one_by(".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E6']")
         .await?;
     ensure!(added.attr("title").await? == "TMDB S1 E6 ↔ TheTVDB S2 E3");
     driver
         .wait_count(
-            ".sockel-dialog .numbering-ep.open-end[aria-label='TMDB S1 E7']",
+            ".sockel-dialog .track-numbering-ep.track-open-end[aria-label='TMDB S1 E7']",
             1,
         )
         .await
@@ -2358,10 +2448,10 @@ async fn numbering_layout(driver: &TestDriver) -> Result<([[f64; 4]; 3], f64)> {
         .execute(
             "const r = s => { const b = document.querySelector(s).getBoundingClientRect(); \
                  return [b.top, b.bottom, b.left, b.right]; }; \
-             const c = document.querySelector('.numbering-modal .sockel-dialog-body'); \
-             return [[r('.numbering-modal .numbering-map-pane'), \
-                 r('.numbering-modal .numbering-range:last-child .numbering-range-head'), \
-                 r('.numbering-modal .sockel-dialog-body')], c.scrollTop];",
+             const c = document.querySelector('.track-numbering-modal .sockel-dialog-body'); \
+             return [[r('.track-numbering-modal .track-numbering-map-pane'), \
+                 r('.track-numbering-modal .track-numbering-range:last-child .track-numbering-range-head'), \
+                 r('.track-numbering-modal .sockel-dialog-body')], c.scrollTop];",
             Vec::new(),
         )
         .await?;
@@ -2385,10 +2475,14 @@ pub async fn numbering_map_stays_in_view(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 40)
+        .wait_count(".sockel-dialog .track-numbering-range", 40)
         .await?;
 
-    let modal = driver.find_one_by(".numbering-modal").await?.rect().await?;
+    let modal = driver
+        .find_one_by(".track-numbering-modal")
+        .await?
+        .rect()
+        .await?;
     ensure!(modal.width > 1000.0, "the editor is {}px wide", modal.width);
 
     driver
@@ -2398,7 +2492,7 @@ pub async fn numbering_map_stays_in_view(driver: &mut TestDriver, track: &mut Tr
         .await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-range.selected[aria-label='Range 40']",
+            ".sockel-dialog .track-numbering-range.track-selected[aria-label='Range 40']",
             1,
         )
         .await?;
@@ -2418,7 +2512,7 @@ pub async fn numbering_map_stays_in_view(driver: &mut TestDriver, track: &mut Tr
     driver
         .webdriver()
         .execute(
-            "document.querySelector('.numbering-modal .numbering-range:last-child').scrollIntoView({ block: 'end' });",
+            "document.querySelector('.track-numbering-modal .track-numbering-range:last-child').scrollIntoView({ block: 'end' });",
             Vec::new(),
         )
         .await?;
@@ -2461,7 +2555,7 @@ pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track
         .await?;
     driver
         .wait_texts(
-            "[data-testid=names-modal] .translation-language",
+            "[data-testid=names-modal] .track-translation-language",
             ["German", "French", "Japanese", "English", "Japanese"],
         )
         .await?;
@@ -2469,7 +2563,7 @@ pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track
     // Automatic numbering: TMDB Season 1 is TheTVDB Season 1.
     driver
         .wait_texts(
-            "[data-testid=names-modal] .names-target",
+            "[data-testid=names-modal] .track-names-target",
             ["TheTVDB Season 1"],
         )
         .await?;
@@ -2502,7 +2596,7 @@ pub async fn names_show_their_origin_and_language(
     let show = "[data-testid=names-modal] section:first-child";
     driver
         .wait_texts(
-            format!("{show} .translation-language").as_str(),
+            format!("{show} .track-translation-language").as_str(),
             [
                 "Unknown language",
                 "German",
@@ -2528,7 +2622,7 @@ pub async fn names_show_their_origin_and_language(
         .await?;
 
     let titles = driver
-        .find_all_attrs(&format!("{show} .translation-language"), "title")
+        .find_all_attrs(&format!("{show} .track-translation-language"), "title")
         .await?;
     ensure!(
         titles
@@ -2545,7 +2639,7 @@ pub async fn names_show_their_origin_and_language(
 
     let unknown = driver
         .find_all_attrs(
-            "[data-testid=names-modal] .translation-language.unknown",
+            "[data-testid=names-modal] .track-translation-language.track-unknown",
             "title",
         )
         .await?;
@@ -2555,7 +2649,7 @@ pub async fn names_show_their_origin_and_language(
     );
 
     let origins = driver
-        .find_all_attrs("[data-testid=names-modal] .alt-name-origin", "title")
+        .find_all_attrs("[data-testid=names-modal] .track-alt-name-origin", "title")
         .await?;
     ensure!(
         origins.len() == driver.count("[data-testid=names-modal] .alt-name").await?
@@ -2575,13 +2669,13 @@ pub async fn names_modal_opens_its_help(driver: &mut TestDriver, _: &mut Track) 
 
     driver
         .wait_texts(
-            "[data-testid=names-modal] .names-intro",
+            "[data-testid=names-modal] .track-names-intro",
             ["Other titles this show and its seasons go by, with each one's language and where it comes from."],
         )
         .await?;
 
     let mark = driver
-        .find_one_by("[data-testid=names-modal] .names-intro button.help-mark")
+        .find_one_by("[data-testid=names-modal] .track-names-intro button.track-help-mark")
         .await?;
     ensure!(
         mark.attr("title").await? == "Help: Other names",
@@ -2619,7 +2713,9 @@ pub async fn phones_open_names_from_actions(
 
     track.execute("DELETE FROM xem_names;")?;
     driver.reload().await?;
-    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await?;
     driver.find_one_by("#S01E05").await?;
     driver
         .find_one_by("button[title='Actions']")
@@ -2627,7 +2723,7 @@ pub async fn phones_open_names_from_actions(
         .click()
         .await?;
     driver
-        .find_one_by("#page > .toolbar .toolbar-dropdown [title='Translations']")
+        .find_one_by("#page > .track-toolbar .track-toolbar-dropdown [title='Translations']")
         .await?;
     ensure!(driver.count("[title='Other names']").await? == 0);
     Ok(())
@@ -2672,9 +2768,9 @@ async fn ensure_names_not_inline(driver: &TestDriver) -> Result<()> {
 pub async fn xem_remote_links_to_its_page(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
 
-    let page = "a[href='https://thexem.info/xem/show/6743'] .logo.xem";
+    let page = "a[href='https://thexem.info/xem/show/6743'] .track-logo.track-xem";
     driver
-        .wait_count(&format!(".detail-sources {page}"), 1)
+        .wait_count(&format!(".track-detail-sources {page}"), 1)
         .await?;
 
     driver
@@ -2710,8 +2806,8 @@ pub async fn episodes_show_other_numberings(
 
     // Automatic numbering puts S01E04 at TheTVDB S1E4, which XEM doesn't map.
     driver.find_one_by("#S01E04").await?;
-    ensure!(driver.count(".numbering-chip").await? == 0);
-    ensure!(driver.count(".numbering-divider").await? == 0);
+    ensure!(driver.count(".track-numbering-chip").await? == 0);
+    ensure!(driver.count(".track-numbering-divider").await? == 0);
 
     driver
         .find_one_by("[title='Settings']:not(#toolbar *)")
@@ -2719,12 +2815,12 @@ pub async fn episodes_show_other_numberings(
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .track-numbering-warning .track-link-button")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".sockel-dialog .numbering-status [title='Suggest from episode order']")
+        .find_one_by(".sockel-dialog .track-numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
@@ -2750,29 +2846,29 @@ pub async fn episodes_show_other_numberings(
     driver.wait_count(".sockel-dialog", 0).await?;
 
     driver
-        .wait_texts("#S01E04 .numbering-chip", ["S02E01", "S02E01"])
+        .wait_texts("#S01E04 .track-numbering-chip", ["S02E01", "S02E01"])
         .await?;
     ensure!(
         driver
-            .find_all_attrs("#S01E04 .numbering-chip", "title")
+            .find_all_attrs("#S01E04 .track-numbering-chip", "title")
             .await?
             == ["TheTVDB S02E01, absolute 4", "Scene S02E01, absolute 4"],
         "AniDB's S1E4 is the episode's own code"
     );
     driver
-        .wait_texts("#S01E05 .numbering-chip", ["S02E02+03", "S02E02"])
+        .wait_texts("#S01E05 .track-numbering-chip", ["S02E02+03", "S02E02"])
         .await?;
-    ensure!(driver.count("#S01E01 .numbering-chip").await? == 0);
+    ensure!(driver.count("#S01E01 .track-numbering-chip").await? == 0);
 
     driver
-        .wait_texts(".numbering-divider-season", ["Season 1", "Season 2"])
+        .wait_texts(".track-numbering-divider-season", ["Season 1", "Season 2"])
         .await?;
 
     // The divider comes right before the first episode of TheTVDB's season 2.
     let before = driver
         .webdriver()
         .execute(
-            "return document.querySelectorAll('.numbering-divider')[1].nextElementSibling.id;",
+            "return document.querySelectorAll('.track-numbering-divider')[1].nextElementSibling.id;",
             Vec::new(),
         )
         .await?;
@@ -2783,7 +2879,7 @@ pub async fn episodes_show_other_numberings(
     open_names(driver).await?;
     driver
         .wait_texts(
-            "[data-testid=names-modal] .names-target",
+            "[data-testid=names-modal] .track-names-target",
             ["TheTVDB Season 1", "TheTVDB Season 2"],
         )
         .await?;
@@ -2843,11 +2939,16 @@ pub async fn numbering_ranges_fold_and_line_up(
         .click()
         .await?;
 
-    let fold = ".sockel-dialog .numbering-fold-summary";
+    let fold = ".sockel-dialog .track-numbering-fold-summary";
     driver
         .wait_texts(fold, ["S3–S10 match TheTVDB season for season · 8 ranges"])
         .await?;
-    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 3);
+    ensure!(
+        driver
+            .count(".sockel-dialog .track-numbering-range")
+            .await?
+            == 3
+    );
     let s1 = ["S1 E1–E3", "S1 E1–E3", "S2 E1–E3", "S2 E1–E3"];
     let s11 = ["S11 E2–E3", "S11 E1–E2"];
     wait_spans(driver, &[&s1[..], &s11[..]].concat()).await?;
@@ -2856,10 +2957,10 @@ pub async fn numbering_ranges_fold_and_line_up(
     let ret = driver
         .webdriver()
         .execute(
-            "return [...document.querySelectorAll('.sockel-dialog .numbering-range-summary')].map(s => \
-                 [...s.querySelectorAll('.numbering-first, .numbering-last')].map(e => { \
+            "return [...document.querySelectorAll('.sockel-dialog .track-numbering-range-summary')].map(s => \
+                 [...s.querySelectorAll('.track-numbering-first, .track-numbering-last')].map(e => { \
                      const b = e.getBoundingClientRect(); \
-                     return e.classList.contains('numbering-first') ? b.right : b.left; }));",
+                     return e.classList.contains('track-numbering-first') ? b.right : b.left; }));",
             Vec::new(),
         )
         .await?;
@@ -2871,7 +2972,7 @@ pub async fn numbering_ranges_fold_and_line_up(
 
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 11)
+        .wait_count(".sockel-dialog .track-numbering-range", 11)
         .await?;
     let run = (3..=10)
         .flat_map(|s| {
@@ -2884,14 +2985,14 @@ pub async fn numbering_ranges_fold_and_line_up(
     driver.snapshot("numbering-fold-open-wide").await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 3)
+        .wait_count(".sockel-dialog .track-numbering-range", 3)
         .await?;
     driver.snapshot("numbering-fold-wide").await?;
 
     // The map selects a range in the folded run: the run unfolds to it, and
     // folds again when done.
     pick(driver, "TMDB S5 E2").await?;
-    let selected = ".sockel-dialog .numbering-range.selected[aria-label='Range 5']";
+    let selected = ".sockel-dialog .track-numbering-range.track-selected[aria-label='Range 5']";
     driver.wait_count(selected, 1).await?;
     ensure!(
         in_view(driver, selected, None).await?,
@@ -2920,7 +3021,7 @@ pub async fn numbering_ranges_fold_and_line_up(
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 4)
+        .wait_count(".sockel-dialog .track-numbering-range", 4)
         .await?;
     wait_spans(
         driver,
@@ -2932,12 +3033,12 @@ pub async fn numbering_ranges_fold_and_line_up(
     driver.set_window_size(400, 850).await?;
     driver.find_all(By::Css(fold)).await?[1].click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-range", 9)
+        .wait_count(".sockel-dialog .track-numbering-range", 9)
         .await?;
     let ret = driver
         .webdriver()
         .execute(
-            "const e = document.querySelector('.numbering-modal .sockel-dialog-body'); return [e.scrollWidth, e.clientWidth];",
+            "const e = document.querySelector('.track-numbering-modal .sockel-dialog-body'); return [e.scrollWidth, e.clientWidth];",
             Vec::new(),
         )
         .await?;
@@ -2970,7 +3071,7 @@ async fn map_offset(driver: &TestDriver, selector: &str) -> Result<f64> {
     let ret = driver
         .webdriver()
         .execute(
-            "const s = document.querySelector('.sockel-dialog .numbering-map-scroll'); \
+            "const s = document.querySelector('.sockel-dialog .track-numbering-map-scroll'); \
              return document.querySelector(arguments[0]).getBoundingClientRect().top - s.getBoundingClientRect().top;",
             vec![selector.into()],
         )
@@ -3039,7 +3140,9 @@ pub async fn numbering_map_folds_long_runs(
         .await?;
 
     let folds = |side: &str| {
-        format!(".sockel-dialog .numbering-column[data-side='{side}'] .numbering-fold-row")
+        format!(
+            ".sockel-dialog .track-numbering-column[data-side='{side}'] .track-numbering-fold-row"
+        )
     };
     driver.wait_count(&folds("tmdb"), 2).await?;
     ensure!(
@@ -3052,7 +3155,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E15']")
+            .count(".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E15']")
             .await?
             == 0
     );
@@ -3062,7 +3165,7 @@ pub async fn numbering_map_folds_long_runs(
         ensure!(
             driver
                 .count(&format!(
-                    ".sockel-dialog .numbering-ep[aria-label='{label}']"
+                    ".sockel-dialog .track-numbering-ep[aria-label='{label}']"
                 ))
                 .await?
                 == 1,
@@ -3072,7 +3175,7 @@ pub async fn numbering_map_folds_long_runs(
     let ret = driver
         .webdriver()
         .execute(
-            "return [...document.querySelectorAll('.sockel-dialog .numbering-band title')].map(e => e.textContent);",
+            "return [...document.querySelectorAll('.sockel-dialog .track-numbering-band title')].map(e => e.textContent);",
             Vec::new(),
         )
         .await?;
@@ -3087,28 +3190,31 @@ pub async fn numbering_map_folds_long_runs(
     // Six colours: the sixth range has its own.
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-swatch.tone-5")
+            .count(".sockel-dialog .track-numbering-swatch.track-tone-5")
             .await?
             == 1
     );
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-ep.tone-5[aria-label='TMDB S1 E35']")
+            .count(".sockel-dialog .track-numbering-ep.track-tone-5[aria-label='TMDB S1 E35']")
             .await?
             == 1
     );
     driver.snapshot("numbering-map-folded").await?;
 
     // Unfolding keeps the row in place and unfolds TheTVDB's too.
-    let fold = ".sockel-dialog .numbering-fold-row[aria-label='TMDB S1 E2–E29']";
+    let fold = ".sockel-dialog .track-numbering-fold-row[aria-label='TMDB S1 E2–E29']";
     let before = map_row_top(driver, fold, true).await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E15']", 1)
+        .wait_count(
+            ".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E15']",
+            1,
+        )
         .await?;
     let after = map_row_top(
         driver,
-        ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E2']",
+        ".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E2']",
         false,
     )
     .await?;
@@ -3118,7 +3224,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-ep[aria-label='TheTVDB S1 E15']")
+            .count(".sockel-dialog .track-numbering-ep[aria-label='TheTVDB S1 E15']")
             .await?
             == 1
     );
@@ -3138,27 +3244,30 @@ pub async fn numbering_map_folds_long_runs(
     pick(driver, "TMDB S1 E1").await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-range.selected[aria-label='Range 1']",
+            ".sockel-dialog .track-numbering-range.track-selected[aria-label='Range 1']",
             1,
         )
         .await?;
     pick(driver, "TMDB S1 E1").await?;
     driver
         .wait_count(
-            ".sockel-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']",
+            ".sockel-dialog .track-numbering-ep.track-anchor[aria-label='TMDB S1 E1']",
             1,
         )
         .await?;
-    let fold = ".sockel-dialog .numbering-fold-row[aria-label='TMDB S1 E3–E29']";
+    let fold = ".sockel-dialog .track-numbering-fold-row[aria-label='TMDB S1 E3–E29']";
     driver.wait_count(fold, 1).await?;
     let before = map_row_top(driver, fold, true).await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E20']", 1)
+        .wait_count(
+            ".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E20']",
+            1,
+        )
         .await?;
     let after = map_row_top(
         driver,
-        ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E3']",
+        ".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E3']",
         false,
     )
     .await?;
@@ -3168,7 +3277,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']")
+            .count(".sockel-dialog .track-numbering-ep.track-anchor[aria-label='TMDB S1 E1']")
             .await?
             == 1
     );
@@ -3190,11 +3299,11 @@ pub async fn numbering_map_folds_long_runs(
         .click()
         .await?;
     driver
-        .wait_count(".sockel-dialog .numbering-fold-row", 0)
+        .wait_count(".sockel-dialog .track-numbering-fold-row", 0)
         .await?;
     ensure!(
         driver
-            .count(".sockel-dialog .numbering-column[data-side='tmdb'] .numbering-ep")
+            .count(".sockel-dialog .track-numbering-column[data-side='tmdb'] .track-numbering-ep")
             .await?
             == 50
     );
@@ -3203,12 +3312,12 @@ pub async fn numbering_map_folds_long_runs(
     // On a short phone, folding the runs above the map's top row leaves that
     // row where it was.
     driver.set_window_size(400, 500).await?;
-    let row = ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E30']";
+    let row = ".sockel-dialog .track-numbering-ep[aria-label='TMDB S1 E30']";
     let top = map_offset(driver, row).await?;
     driver
         .webdriver()
         .execute(
-            "document.querySelector('.sockel-dialog .numbering-map-scroll').scrollTop += arguments[0];",
+            "document.querySelector('.sockel-dialog .track-numbering-map-scroll').scrollTop += arguments[0];",
             vec![top.into()],
         )
         .await?;

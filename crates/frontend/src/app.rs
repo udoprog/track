@@ -10,6 +10,7 @@ use yew::prelude::*;
 
 use crate::active_tasks::ActiveTasksProvider;
 use crate::background::{Background, BackgroundState, UndoWatched};
+use crate::class;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::page::{
     Account, Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
@@ -201,11 +202,11 @@ impl Component for App {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
-                <div class="background">
+                <div class={class::BACKGROUND}>
                     if let Some(url) = self.background_state.url() {
                         <div
                             key={url.to_owned()}
-                            class="background-image"
+                            class={class::BACKGROUND_IMAGE}
                             style={format!("background-image: url('{url}')")}
                         />
                     }
@@ -241,18 +242,18 @@ impl Component for App {
                         }
 
                         // Always present, so screen readers announce what appears in it.
-                        <div class="toast-region" role="status">
+                        <div class={class::TOAST_REGION} role="status">
                         if let Some(undo) = &self.undo {
-                            <div class="toast">
-                                <span class="icon success check-circle" aria-hidden="true" />
+                            <div class={class::TOAST}>
+                                <span class={classes!(class::ICON, class::SUCCESS, class::ICON_CHECK_CIRCLE)} aria-hidden="true" />
 
-                                <span class="fill">{match undo.kind {
+                                <span class={class::FILL}>{match undo.kind {
                                     api::WatchedKind::Episode { .. } => "Episode marked as watched",
                                     api::WatchedKind::Movie { .. } => "Movie marked as watched",
                                 }}</span>
 
-                                <Button icon="arrow-uturn-left" label="Undo" title="Undo" onclick={ctx.link().callback(|_| Msg::Undo)} />
-                                <Button icon="x-mark" class="toast-dismiss" title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)} />
+                                <Button icon={class::ICON_ARROW_UTURN_LEFT} label="Undo" title="Undo" onclick={ctx.link().callback(|_| Msg::Undo)} />
+                                <Button icon={class::ICON_X_MARK} class={class::TOAST_DISMISS} title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)} />
                             </div>
                         }
                         </div>
@@ -628,69 +629,69 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     };
 
     let (connection_icon, connection_style, connection_title) = if props.connected {
-        ("signal", "success", "Connected")
+        (class::ICON_SIGNAL, class::SUCCESS, "Connected")
     } else {
-        ("signal-slash", "danger", "Disconnected")
+        (class::ICON_SIGNAL_SLASH, class::DANGER, "Disconnected")
     };
 
     html! {
-        <header id="toolbar" class="toolbar toolbar-padding">
-            <div class="sockel-cluster sockel-nowrap sockel-snug">
-                <Link to={Route::Dashboard(DashboardQuery::default())} class="site-title" onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
+        <header id="toolbar" class={classes!(class::TOOLBAR, class::TOOLBAR_PADDING)}>
+            <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::SNUG)}>
+                <Link to={Route::Dashboard(DashboardQuery::default())} class={class::SITE_TITLE} onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 
-            <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
+            <Button class={class::TOOLBAR_TOGGLE} icon={if *menu_open { class::ICON_X_MARK } else { class::ICON_BARS_3 }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
 
-            <nav class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))} aria-label="Main">
-                <div class="toolbar-item mobile-has-text" title={connection_title} role="img" aria-label={connection_title}>
-                    <span class={classes!("icon", connection_style, connection_icon)} aria-hidden="true" />
-                    <span class="mobile-only">{connection_title}</span>
+            <nav class={classes!(class::TOOLBAR_DROPDOWN, (!*menu_open).then_some(class::DESKTOP_ONLY))} aria-label="Main">
+                <div class={classes!(class::TOOLBAR_ITEM, class::MOBILE_HAS_TEXT)} title={connection_title} role="img" aria-label={connection_title}>
+                    <span class={classes!(class::ICON, connection_style, connection_icon)} aria-hidden="true" />
+                    <span class={class::MOBILE_ONLY}>{connection_title}</span>
                 </div>
 
-                <Link to={Route::Dashboard(DashboardQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Dashboard).then_some("active"))} title="Dashboard" current={props.section == Section::Dashboard} onclick={close_menu.clone()}>
-                    <span class="icon rectangle-stack" aria-hidden="true" />
+                <Link to={Route::Dashboard(DashboardQuery::default())} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Dashboard).then_some(class::ACTIVE))} title="Dashboard" current={props.section == Section::Dashboard} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_RECTANGLE_STACK)} aria-hidden="true" />
                     <span>{"Dashboard"}</span>
                 </Link>
 
-                <Link to={Route::Media(MediaQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Media).then_some("active"))} title="Media" current={props.section == Section::Media} onclick={close_menu.clone()}>
-                    <span class="icon film" aria-hidden="true" />
+                <Link to={Route::Media(MediaQuery::default())} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Media).then_some(class::ACTIVE))} title="Media" current={props.section == Section::Media} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_FILM)} aria-hidden="true" />
                     <span>{"Media"}</span>
                 </Link>
 
-                <Link to={Route::People(PersonQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::People).then_some("active"))} title="People" current={props.section == Section::People} onclick={close_menu.clone()}>
-                    <span class="icon users" aria-hidden="true" />
+                <Link to={Route::People(PersonQuery::default())} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::People).then_some(class::ACTIVE))} title="People" current={props.section == Section::People} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_USERS)} aria-hidden="true" />
                     <span>{"People"}</span>
                 </Link>
 
-                <Link to={Route::Search(SearchQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Search).then_some("active"))} title="Search" current={props.section == Section::Search} onclick={close_menu.clone()}>
-                    <span class="icon magnifying-glass" aria-hidden="true" />
+                <Link to={Route::Search(SearchQuery::default())} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Search).then_some(class::ACTIVE))} title="Search" current={props.section == Section::Search} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
                     <span>{"Search"}</span>
                 </Link>
 
-                <Link to={Route::Queue(QueueQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Queue).then_some("active"))} title="Queue" current={props.section == Section::Queue} onclick={close_menu.clone()}>
-                    <span class="icon queue-list" aria-hidden="true" />
+                <Link to={Route::Queue(QueueQuery::default())} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Queue).then_some(class::ACTIVE))} title="Queue" current={props.section == Section::Queue} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_QUEUE_LIST)} aria-hidden="true" />
                     <span>{"Queue"}</span>
                 </Link>
 
-                <Link to={Route::Settings(None)} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
-                    <span class="icon cog-6-tooth" aria-hidden="true" />
+                <Link to={Route::Settings(None)} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Settings).then_some(class::ACTIVE))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_COG_6_TOOTH)} aria-hidden="true" />
                     <span>{"Settings"}</span>
                 </Link>
 
                 if props.admin {
-                    <Link to={Route::Users} class={classes!("toolbar-item", "has-text", (props.section == Section::Users).then_some("active"))} title="Users" current={props.section == Section::Users} onclick={close_menu.clone()}>
-                        <span class="icon user-group" aria-hidden="true" />
+                    <Link to={Route::Users} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Users).then_some(class::ACTIVE))} title="Users" current={props.section == Section::Users} onclick={close_menu.clone()}>
+                        <span class={classes!(class::ICON, class::ICON_USER_GROUP)} aria-hidden="true" />
                         <span>{"Users"}</span>
                     </Link>
                 }
 
-                <sockel::IconButton class="toolbar-item mobile-has-text" title="Help" haspopup=true onclick={on_help}>
-                    <span class="icon question-mark-circle" aria-hidden="true" />
-                    <span class="mobile-only">{"Help"}</span>
+                <sockel::IconButton class={classes!(class::TOOLBAR_ITEM, class::MOBILE_HAS_TEXT)} title="Help" haspopup=true onclick={on_help}>
+                    <span class={classes!(class::ICON, class::ICON_QUESTION_MARK_CIRCLE)} aria-hidden="true" />
+                    <span class={class::MOBILE_ONLY}>{"Help"}</span>
                 </sockel::IconButton>
 
-                <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
-                    <span class="icon user-circle" aria-hidden="true" />
+                <Link to={Route::Account} class={classes!(class::TOOLBAR_ITEM, class::HAS_TEXT, (props.section == Section::Account).then_some(class::ACTIVE))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
+                    <span class={classes!(class::ICON, class::ICON_USER_CIRCLE)} aria-hidden="true" />
                     <span>{props.name.clone()}</span>
                 </Link>
             </nav>

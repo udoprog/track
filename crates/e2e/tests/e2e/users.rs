@@ -50,7 +50,7 @@ pub async fn creates_a_user_who_registers(driver: &mut TestDriver, _: &mut Track
     confirm.send_keys(ENTER).await?;
 
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["bob"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["bob"])
         .await?;
     hides_admin_pages(driver).await
 }
@@ -66,7 +66,7 @@ pub async fn regular_users_do_not_see_users(
 
     // Their preferences are their own to change.
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
@@ -212,7 +212,7 @@ pub async fn follows_users_added_elsewhere(driver: &mut TestDriver, _: &mut Trac
 
 async fn open_users(driver: &TestDriver) -> Result<()> {
     driver
-        .find_one_by(".toolbar-item[title=Users]")
+        .find_one_by(".track-toolbar-item[title=Users]")
         .await?
         .click()
         .await?;
@@ -234,25 +234,33 @@ pub async fn regular_users_cannot_remove_media(
     driver.find_one_by("[title='Remove movie']").await?;
 
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
-    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver
+        .find_nth(".track-person-card", 0)
+        .await?
+        .click()
+        .await?;
     driver.find_one_by("[title='Delete person']").await?;
     let person = driver.webdriver().current_url().await?;
 
     register_alice(driver, track).await?;
 
     driver.webdriver().goto(&show).await?;
-    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await?;
     ensure!(
         driver.count("[title='Remove show']").await? == 0,
         "a regular user is offered Remove show"
     );
 
     driver.webdriver().goto(&movie).await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
     ensure!(
         driver.count("[title='Remove movie']").await? == 0,
         "a regular user is offered Remove movie"
@@ -277,7 +285,9 @@ pub async fn admin_actions_follow_a_role_change(
     let show = open_media(driver, 1, "Seeded Show").await?;
     register_alice(driver, track).await?;
     driver.webdriver().goto(&show).await?;
-    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await?;
     ensure!(
         driver.count("[title='Remove show']").await? == 0,
         "a regular user is offered Remove show"
@@ -290,7 +300,7 @@ pub async fn admin_actions_follow_a_role_change(
         .in_second_window(async || {
             driver.webdriver().goto(&root).await?;
             driver
-                .wait_texts(".toolbar-item[title=Account]", ["root"])
+                .wait_texts(".track-toolbar-item[title=Account]", ["root"])
                 .await?;
             open_users(driver).await?;
 
@@ -320,11 +330,15 @@ pub async fn regular_users_cannot_edit_shared_data(
     let show = open_media(driver, 1, "Seeded Show").await?;
 
     driver
-        .find_one_by(".toolbar-item[title=People]")
+        .find_one_by(".track-toolbar-item[title=People]")
         .await?
         .click()
         .await?;
-    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver
+        .find_nth(".track-person-card", 0)
+        .await?
+        .click()
+        .await?;
     driver.find_one_by("[data-testid=person-header] h1").await?;
     let person = driver.webdriver().current_url().await?;
     let queue = person.join("/queue")?;
@@ -402,7 +416,10 @@ async fn check_shared_controls(
         .click()
         .await?;
     driver
-        .wait_texts(".sockel-dialog .text-muted", ["No releases recorded."])
+        .wait_texts(
+            ".sockel-dialog .track-text-muted",
+            ["No releases recorded."],
+        )
         .await?;
     if admin {
         driver
@@ -413,7 +430,9 @@ async fn check_shared_controls(
     }
 
     driver.webdriver().goto(movie).await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
     open_settings(driver).await?;
     if admin {
         driver
@@ -455,7 +474,7 @@ async fn check_shared_controls(
     }
 
     driver.webdriver().goto(queue).await?;
-    driver.find_one_by(".queue-now-title").await?;
+    driver.find_one_by(".track-queue-now-title").await?;
     present("[title='Queue sync for all show and movies']").await
 }
 
@@ -489,7 +508,7 @@ async fn register_alice(driver: &TestDriver, track: &Track) -> Result<()> {
         .send_keys(ENTER)
         .await?;
     driver
-        .wait_texts(".toolbar-item[title=Account]", ["alice"])
+        .wait_texts(".track-toolbar-item[title=Account]", ["alice"])
         .await?;
     Ok(())
 }
@@ -497,39 +516,39 @@ async fn register_alice(driver: &TestDriver, track: &Track) -> Result<()> {
 /// Opens the `nth` card on the media page and returns the detail page's URL.
 async fn open_media(driver: &TestDriver, nth: usize, title: &str) -> Result<String> {
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Seeded Movie", "Seeded Show"])
         .await?;
     driver
-        .find_nth(".media-card .media-poster", nth)
+        .find_nth(".track-media-card .track-media-poster", nth)
         .await?
         .click()
         .await?;
-    driver.wait_texts(".detail-title", [title]).await?;
+    driver.wait_texts(".track-detail-title", [title]).await?;
     Ok(driver.webdriver().current_url().await?.to_string())
 }
 
 async fn hides_admin_pages(driver: &TestDriver) -> Result<()> {
     driver
-        .wait_texts(".toolbar-item.active", ["Dashboard"])
+        .wait_texts(".track-toolbar-item.track-active", ["Dashboard"])
         .await?;
 
     ensure!(
-        driver.count(".toolbar-item[title=Users]").await? == 0,
+        driver.count(".track-toolbar-item[title=Users]").await? == 0,
         "a regular user sees Users in the app bar"
     );
 
     driver
-        .find_one_by(".toolbar-item[title=Settings]")
+        .find_one_by(".track-toolbar-item[title=Settings]")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".settings h2", ["Appearance", "Language"])
+        .wait_texts(".track-settings h2", ["Appearance", "Language"])
         .await?;
     ensure!(
         driver

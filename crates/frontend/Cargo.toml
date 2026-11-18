@@ -28,6 +28,9 @@ pulldown-cmark = { version = "0.13.4", default-features = false }
 [build-dependencies]
 sockel-build = "0.1"
 
+[dev-dependencies]
+sockel-build = "0.1"
+
 [dependencies.web-sys]
 version = "0.3"
 features = [

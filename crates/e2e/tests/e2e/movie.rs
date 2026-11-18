@@ -8,23 +8,29 @@ pub async fn puts_the_cast_beside_the_poster(driver: &mut TestDriver, _: &mut Tr
     driver.set_window_size(1250, 1000).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Seeded Movie", "Seeded Show"])
         .await?;
     driver
-        .find_nth(".media-card .media-poster", 0)
+        .find_nth(".track-media-card .track-media-poster", 0)
         .await?
         .click()
         .await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
 
-    let layout = driver.find_one_by(".detail-layout").await?.rect().await?;
-    let cast = driver.find_one_by(".cast-card").await?.rect().await?;
+    let layout = driver
+        .find_one_by(".track-detail-layout")
+        .await?
+        .rect()
+        .await?;
+    let cast = driver.find_one_by(".track-cast-card").await?.rect().await?;
 
     ensure!(
         cast.x > layout.x + 100.0,
@@ -42,24 +48,30 @@ pub async fn phone_release_line_stays_together(
     _: &mut Track,
 ) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.wait_texts(".track-site-title", ["Track"]).await?;
 
-    driver.find_one_by(".toolbar-toggle").await?.click().await?;
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-toggle")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Seeded Movie", "Seeded Show"])
         .await?;
     driver
-        .find_nth(".media-card .media-poster", 0)
+        .find_nth(".track-media-card .track-media-poster", 0)
         .await?
         .click()
         .await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
 
     // The header's release date comes first; the watch status reuses the title.
     let release = "indicator[title='Release date']";
@@ -69,17 +81,17 @@ pub async fn phone_release_line_stays_together(
         .rect()
         .await?;
     let icon = driver
-        .find_first(&format!("{release} > .item-inline .icon"))
+        .find_first(&format!("{release} > .track-item-inline .track-icon"))
         .await?
         .rect()
         .await?;
     let logo = driver
-        .find_first(&format!("{release} .logo"))
+        .find_first(&format!("{release} .track-logo"))
         .await?
         .rect()
         .await?;
     let logo_box = driver
-        .find_first(&format!("{release} content > .item-inline"))
+        .find_first(&format!("{release} content > .track-item-inline"))
         .await?
         .rect()
         .await?;
@@ -111,27 +123,29 @@ pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Trac
     driver.set_window_size(1250, 1000).await?;
 
     driver
-        .find_one_by(".toolbar-item[title=Media]")
+        .find_one_by(".track-toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .wait_texts(".track-media-title", ["Seeded Movie", "Seeded Show"])
         .await?;
     driver
-        .find_nth(".media-card .media-poster", 0)
+        .find_nth(".track-media-card .track-media-poster", 0)
         .await?
         .click()
         .await?;
-    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
-    driver.find_one_by(".cast-card").await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Movie"])
+        .await?;
+    driver.find_one_by(".track-cast-card").await?;
     driver.snapshot("wide-movie-backdrop").await?;
 
     driver.set_window_size(400, 850).await?;
 
     ensure!(
         driver
-            .find_one_by(".detail-hero-image")
+            .find_one_by(".track-detail-hero-image")
             .await?
             .visible()
             .await?,
@@ -139,7 +153,7 @@ pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Trac
     );
 
     let copies = driver
-        .rendered_texts(".detail-layout .backdrop")
+        .rendered_texts(".track-detail-layout .track-backdrop")
         .await?
         .len();
     ensure!(
