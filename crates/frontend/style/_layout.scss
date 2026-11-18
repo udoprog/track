@@ -33,21 +33,21 @@
 }
 
 @include g.on-desktop {
-    .desktop-row {
+    .track-desktop-row {
         @include row-base;
     }
 
-    .sockel-cluster.desktop-align-end {
+    .sockel-cluster.track-desktop-align-end {
         justify-content: flex-end;
     }
 }
 
 @include g.on-mobile {
-    .mobile-column {
+    .track-mobile-column {
         @include column-base;
     }
 
-    .sockel-cluster.start-on-mobile {
+    .sockel-cluster.track-start-on-mobile {
         justify-content: flex-start;
     }
 }
@@ -59,15 +59,15 @@
     color: v.$text-primary;
 }
 
-.grow {
+.track-grow {
     flex: 1;
 }
 
-.fixed {
+.track-fixed {
     flex: none;
 }
 
-.title {
+.track-title {
     min-width: 0;
     // On a heading element: not the control height `h1`-`h6` default to.
     min-height: 0;
@@ -75,19 +75,19 @@
     font-weight: v.$bold-weight;
     color: v.$text-primary;
 
-    &.sm {
+    &.track-sm {
         font-size: v.$font-base;
     }
 }
 
-.accent {
+.track-accent {
     color: v.$color-primary;
 }
 
-.mono {
+.track-mono {
     font-family: v.$monospace-font;
 }
 
-.dim {
+.track-dim {
     opacity: 0.55;
 }

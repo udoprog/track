@@ -2,26 +2,26 @@
 @use 'grid' as g;
 
 @mixin logo($name) {
-    &.#{$name} {
+    &.track-#{$name} {
         background-image: url('/static/logos/#{$name}.svg');
     }
 }
 
-.logo {
+.track-logo {
     display: inline-block;
     vertical-align: middle;
 
     height: 80%;
     aspect-ratio: 2 / 1;
 
-    &.sm {
+    &.track-sm {
         height: 80%;
     }
 
     // In a sockel button's label, whose height is its line's: the share of
     // a control's content box (inside its edge and padding) it takes in a
     // button of the app's own.
-    &.in-label {
+    &.track-in-label {
         height: 0.8 * (v.$input-height - 2 * (1px + v.$padding));
 
         @include g.on-mobile {
@@ -43,11 +43,11 @@
     @include logo('tvmaze');
 
     // Sources without a vendored logo: a text plate sized to its label.
-    &.xem,
-    &.anidb,
-    &.scene,
-    &.trakt,
-    &.rage {
+    &.track-xem,
+    &.track-anidb,
+    &.track-scene,
+    &.track-trakt,
+    &.track-rage {
         display: inline-flex;
         align-items: center;
         aspect-ratio: auto;
@@ -68,27 +68,27 @@
         }
     }
 
-    &.xem::before {
+    &.track-xem::before {
         content: 'XEM';
         background-color: #2f6fc4;
     }
 
-    &.anidb::before {
+    &.track-anidb::before {
         content: 'AniDB';
         background-color: #1d3a66;
     }
 
-    &.scene::before {
+    &.track-scene::before {
         content: 'Scene';
         background-color: #3a3f47;
     }
 
-    &.trakt::before {
+    &.track-trakt::before {
         content: 'Trakt';
         background-color: #3a3f47;
     }
 
-    &.rage::before {
+    &.track-rage::before {
         content: 'TVRage';
         background-color: #3a3f47;
     }

@@ -2,6 +2,7 @@ use auth::yew023::AdminUsers;
 use yew::prelude::*;
 
 use super::account::use_page_title;
+use crate::class;
 
 /// Managing users, for administrators.
 #[function_component]
@@ -10,9 +11,9 @@ pub(crate) fn Users() -> Html {
 
     html! {
         <>
-            <h1 class="sockel-visually-hidden">{"Users"}</h1>
+            <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Users"}</h1>
 
-            <div class="settings wide">
+            <div class={classes!(class::SETTINGS, class::WIDE)}>
                 <AdminUsers />
             </div>
         </>

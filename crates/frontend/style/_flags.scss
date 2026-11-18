@@ -1,6 +1,6 @@
 @use 'flags_generated' as flags;
 
-.flag {
+.track-flag {
     display: inline-block;
     vertical-align: middle;
 
@@ -9,12 +9,12 @@
     background-position: center;
     background-repeat: no-repeat;
 
-    &.sm {
+    &.track-sm {
         height: 80%;
     }
 
     @each $name, $svg in flags.$names {
-        &.#{$name} {
+        &.track-flag-#{$name} {
             background-image: url('/static/flags/#{$svg}.svg');
         }
     }

@@ -7,6 +7,7 @@ use yew::prelude::*;
 use super::detail::{RemoteMsg, RemoteUpdate, Remotes};
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
@@ -148,8 +149,8 @@ impl Component for PersonDetail {
             PersonState::Loading => return html! { <DetailSkeleton /> },
             PersonState::Missing => {
                 return html! {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more">{"No such person"}</span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}>{"No such person"}</span>
                     </div>
                 };
             }
@@ -158,7 +159,7 @@ impl Component for PersonDetail {
 
         html! {
             <>
-                <div class="sockel-stack sockel-loose">
+                <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)}>
                     { self.view_header(ctx, person) }
                     { self.view_filmography() }
                 </div>
@@ -402,16 +403,16 @@ impl PersonDetail {
         let name = person.name.title().unwrap_or("Unknown").to_owned();
 
         html! {
-            <div class="person-detail-header" data-testid="person-header">
-                <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
+            <div class={class::PERSON_DETAIL_HEADER} data-testid="person-header">
+                <Image class={class::PERSON_DETAIL_PHOTO} placeholder={true} placeholder_icon={class::ICON_USER} src={person.profile.clone()} alt={name.clone()} />
 
-                <div class="sockel-stack">
+                <div class={sockel::class::STACK}>
                     <sockel::PageHead title={html! {name}} subtitle={person.department.department().map(|d| html! {d.to_owned()})}>
-                        <div class="input-group">
+                        <div class={class::INPUT_GROUP}>
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
-                            <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
+                            <Button icon={class::ICON_COG_6_TOOTH} title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
                             if self.auth.is_admin() {
-                                <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
+                                <Button node_ref={self.remove_anchor.clone()} icon={class::ICON_TRASH} variant={Variant::Danger} class={class::DETACHED} title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
 
                                 if self.confirming_delete {
                                     <Confirm prompt="Delete person" label={person.name.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_confirm={link.callback(|_| Msg::DeletePerson)} on_cancel={link.callback(|_| Msg::CancelDelete)} />
@@ -420,21 +421,21 @@ impl PersonDetail {
                         </div>
                     </sockel::PageHead>
 
-                    <div class="detail-sources sockel-cluster">
+                    <div class={classes!(class::DETAIL_SOURCES, sockel::class::CLUSTER)}>
                         {for person.remotes.iter().filter_map(|r| {
                             let url = r.remote.person_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
 
                             Some(html! {
-                                <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!("logo", id)} />
+                                <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                    <span class={classes!(class::LOGO, id)} />
                                 </a>
                             })
                         })}
                     </div>
                 </div>
 
-                <TranslatedText strings={person.biography.clone()} class="person-biography" />
+                <TranslatedText strings={person.biography.clone()} class={class::PERSON_BIOGRAPHY} />
             </div>
         }
     }
@@ -447,13 +448,13 @@ impl PersonDetail {
             .map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())));
 
         html! {
-            <Modal icon="cog-6-tooth" title="Settings" on_close={link.callback(|_| Msg::CloseSettings)}>
+            <Modal icon={class::ICON_COG_6_TOOTH} title="Settings" on_close={link.callback(|_| Msg::CloseSettings)}>
                 <div class={sockel::form_rows(false)}>
                     <FormRow label="Last synced">
                         if let Some(ts) = last_synced {
                             <span title="Last synced at">{ts}</span>
                         } else {
-                            <span class="text-muted">{"Never"}</span>
+                            <span class={class::TEXT_MUTED}>{"Never"}</span>
                         }
 
                         if !person.remotes.is_empty() {
@@ -463,7 +464,7 @@ impl PersonDetail {
 
                     if self.auth.is_admin() {
                         <FormRow label="Remotes" hint="The TMDB, IMDb and other identifiers used to sync.">
-                            <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
+                            <Button icon={class::ICON_IDENTIFICATION} label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
                         </FormRow>
                     }
                 </div>
@@ -504,10 +505,10 @@ impl PersonDetail {
         }
 
         html! {
-            <section class="sockel-stack" data-testid="filmography">
+            <section class={sockel::class::STACK} data-testid="filmography">
                 <sockel::SectionHead title={html! {"Known for"}} />
 
-                <div class="person-grid">
+                <div class={class::PERSON_GRID}>
                     { for titles.iter().map(|(c, roles)| self.view_credit(c, roles)) }
                 </div>
             </section>
@@ -523,14 +524,14 @@ impl PersonDetail {
         };
 
         html! {
-            <Link to={route} class="person-card lift">
-                <Image class="person-photo artwork" placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
+            <Link to={route} class={classes!(class::PERSON_CARD, class::LIFT)}>
+                <Image class={classes!(class::PERSON_PHOTO, class::ARTWORK)} placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
 
-                <div class="person-info">
-                    <div class="person-name">{ title }</div>
+                <div class={class::PERSON_INFO}>
+                    <div class={class::PERSON_NAME}>{ title }</div>
 
                     if !roles.is_empty() {
-                        <div class="person-department person-roles text-muted" title={roles.join(", ")}>{ roles.join(", ") }</div>
+                        <div class={classes!(class::PERSON_DEPARTMENT, class::PERSON_ROLES, class::TEXT_MUTED)} title={roles.join(", ")}>{ roles.join(", ") }</div>
                     }
                 </div>
             </Link>

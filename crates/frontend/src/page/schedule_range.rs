@@ -6,6 +6,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
 use sockel::{Skeleton, SkeletonShape};
@@ -152,7 +153,7 @@ impl Component for ScheduleRange {
         let last = days[days.len() - 1];
 
         html! {
-            <div class="sockel-stack">
+            <div class={sockel::class::STACK}>
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous day",
@@ -169,12 +170,12 @@ impl Component for ScheduleRange {
                 }) }
 
                 if self.options_open {
-                    <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
+                    <ContextMenu icon={class::ICON_ADJUSTMENTS_HORIZONTAL} prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
                         { view_stepper("Days shown", "Fewer days", "More days", days_count as u32, on_fewer, on_more) }
                     </ContextMenu>
                 }
 
-                <div class="agenda sockel-stack sockel-loose">
+                <div class={classes!("agenda", sockel::class::STACK, sockel::class::LOOSE)}>
                     { for days.iter().map(|&day| self.view_day(ctx, day, today)) }
                 </div>
             </div>
@@ -326,15 +327,15 @@ impl ScheduleRange {
         let on_hover = link.callback(Msg::Hover);
 
         html! {
-            <section key={day.to_string()} class="agenda-day sockel-stack sockel-tight">
+            <section key={day.to_string()} class={classes!("agenda-day", sockel::class::STACK, sockel::class::TIGHT)}>
                 { view_day_heading(day, today) }
 
                 if !self.loaded.is_some_and(|(first, last)| first <= day && day <= last) {
                     <Skeleton shape={SkeletonShape::Line} />
                 } else if items.is_empty() {
-                    <p class="text-muted">{"Nothing airs"}</p>
+                    <p class={class::TEXT_MUTED}>{"Nothing airs"}</p>
                 } else {
-                    <div class="agenda-items">
+                    <div class={class::AGENDA_ITEMS}>
                         { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover, false)) }
                     </div>
                 }

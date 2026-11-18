@@ -3,19 +3,19 @@
 @use 'grid' as g;
 
 @mixin icon($name) {
-    &.#{$name} {
+    &.track-icon-#{$name} {
         mask-image: url('/static/icons/#{$name}.svg');
         background-color: var(--icon-color);
     }
 }
 
 @mixin color_image($name) {
-    &.#{$name} {
+    &.track-icon-#{$name} {
         background-image: url('/static/icons/#{$name}.svg');
     }
 }
 
-.icon {
+.track-icon {
     display: inline-block;
     vertical-align: middle;
 
@@ -27,36 +27,36 @@
         height: v.$icon-size-touch;
     }
 
-    &.primary {
+    &.track-primary {
         --icon-color: #{v.$color-primary};
     }
 
-    &.secondary {
+    &.track-secondary {
         --icon-color: #{v.$color-secondary};
     }
 
-    &.success {
+    &.track-success {
         --icon-color: #{v.$color-success};
     }
 
-    &.danger {
+    &.track-danger {
         --icon-color: #{v.$color-danger};
     }
 
-    &.muted {
+    &.track-muted {
         --icon-color: #{v.$text-muted};
     }
 
-    &.sm {
+    &.track-sm {
         height: v.$icon-size-sm;
     }
 
-    &.icon-4x3 {
+    &.track-icon-4x3 {
         aspect-ratio: 4 / 3;
     }
 
     // Inside sockel's glyph box (the IconSet): fills it, in the text's colour.
-    &.glyph {
+    &.track-glyph {
         height: 100%;
         --icon-color: currentColor;
     }

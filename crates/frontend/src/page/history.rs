@@ -7,6 +7,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
 use crate::ui::{Button, Image, Link, Pager};
@@ -162,13 +163,13 @@ impl Component for History {
 
         html! {
             <>
-                <div class="list-controls">
-                    <div class="search-field">
-                        <span class="icon magnifying-glass" aria-hidden="true" />
+                <div class={class::LIST_CONTROLS}>
+                    <div class={class::SEARCH_FIELD}>
+                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
                         <input type="text" placeholder="Filter" aria-label="Filter history" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="x-mark" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon={class::ICON_X_MARK} title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
@@ -178,27 +179,27 @@ impl Component for History {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}><span class={classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN)} aria-hidden="true" /></span>
                     </div>
                 } else if self.groups.is_empty() {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more">{"Nothing to show."}</span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}>{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="agenda history sockel-stack sockel-loose">
+                    <div class={classes!("agenda", "history", sockel::class::STACK, sockel::class::LOOSE)}>
                         { for days.iter().map(|(day, groups)| html! {
-                            <section key={day.to_string()} class="agenda-day sockel-stack sockel-tight">
+                            <section key={day.to_string()} class={classes!("agenda-day", sockel::class::STACK, sockel::class::TIGHT)}>
                                 { view_day_heading(*day, today) }
 
-                                <div class="agenda-items">
+                                <div class={class::AGENDA_ITEMS}>
                                     { for groups.iter().map(|g| self.view_group(ctx, g, *day)) }
                                 </div>
                             </section>
                         }) }
                     </div>
 
-                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         <Pager {page} pages={total_pages} {on_page} />
                     </div>
                 }
@@ -360,16 +361,16 @@ impl History {
 
             html! {
                 <>
-                    <span class="schedule-time sockel-numeric">
+                    <span class={classes!(class::SCHEDULE_TIME, sockel::class::NUMERIC)}>
                         <span>{span}</span>
-                        <span class="badge">{range}</span>
+                        <span class={class::BADGE}>{range}</span>
                     </span>
 
                     <Button
-                        icon={if expanded { "chevron-up" } else { "chevron-down" }}
+                        icon={if expanded { class::ICON_CHEVRON_UP } else { class::ICON_CHEVRON_DOWN }}
                         label={label}
                         title={toggle_title}
-                        class="history-toggle"
+                        class={class::HISTORY_TOGGLE}
                         expanded={Some(expanded)}
                         onclick={ctx.link().callback(move |_| Msg::Toggle(key))}
                     />
@@ -378,15 +379,15 @@ impl History {
         };
 
         html! {
-            <div key={key.to_string()} class="schedule-item history-item">
-                <Link to={route.clone()} class="schedule-poster" decorative=true>
+            <div key={key.to_string()} class={classes!(class::SCHEDULE_ITEM, class::HISTORY_ITEM)}>
+                <Link to={route.clone()} class={class::SCHEDULE_POSTER} decorative=true>
                     <Image src={group.poster.clone()} />
                 </Link>
-                <Link to={route} class="schedule-title" title={format!("Open {title}")}><>{title.clone()}</></Link>
-                <span class="schedule-times">{detail}</span>
+                <Link to={route} class={class::SCHEDULE_TITLE} title={format!("Open {title}")}><>{title.clone()}</></Link>
+                <span class={class::SCHEDULE_TIMES}>{detail}</span>
 
                 if group.watches.len() > 1 && self.expanded.contains(&key) {
-                    <ul class="history-episodes" aria-label={format!("Episodes of {title}")}>
+                    <ul class={class::HISTORY_EPISODES} aria-label={format!("Episodes of {title}")}>
                         { for group.watches.iter().map(|w| html! {
                             <li key={w.id.to_string()}>{ self.view_watch(group.media, w, day) }</li>
                         }) }
@@ -418,19 +419,19 @@ impl History {
                 );
 
                 html! {
-                    <Link {to} class="schedule-time history-watch sockel-numeric" title={format!("Open {code}")}>
+                    <Link {to} class={classes!(class::SCHEDULE_TIME, class::HISTORY_WATCH, sockel::class::NUMERIC)} title={format!("Open {code}")}>
                         <span>{when}</span>
-                        <span class="badge">{code.to_string()}</span>
+                        <span class={class::BADGE}>{code.to_string()}</span>
                         if let Some(title) = &episode.title {
-                            <span class="history-episode-title sockel-truncate">{title.clone()}</span>
+                            <span class={classes!("history-episode-title", sockel::class::TRUNCATE)}>{title.clone()}</span>
                         }
                     </Link>
                 }
             }
             _ => html! {
-                <span class="schedule-time history-watch sockel-numeric">
+                <span class={classes!(class::SCHEDULE_TIME, class::HISTORY_WATCH, sockel::class::NUMERIC)}>
                     <span>{when}</span>
-                    <span class="badge">{"Movie"}</span>
+                    <span class={class::BADGE}>{"Movie"}</span>
                 </span>
             },
         }

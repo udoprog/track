@@ -3,7 +3,7 @@
 
 // A month band: `.sockel-cluster.title.sm` give it its line and type, this keeps it as
 // tall as a control so it lines up with the weeks around it.
-.calendar-month {
+.track-calendar-month {
     min-height: v.$input-height;
 
     @include g.on-mobile {
@@ -11,7 +11,7 @@
     }
 }
 
-.calendar-week {
+.track-calendar-week {
     display: flex;
     flex-direction: column;
     gap: v.$gap;
@@ -25,25 +25,25 @@
 
 // The Upcoming agenda, and the Schedule on phones: days in a column, each a
 // heading over what airs on it.
-.agenda-day-title {
+.track-agenda-day-title {
     gap: v.$gap-xs;
     min-height: 0;
     font-size: v.$font-base;
     color: v.$text-color;
 
-    >.text-muted {
+    >.track-text-muted {
         font-weight: normal;
     }
 }
 
-.agenda-items {
+.track-agenda-items {
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
 // An entry reads as one block: the poster, then its title over its times.
-.schedule-item {
+.track-schedule-item {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr);
     grid-template-areas:
@@ -61,7 +61,7 @@
 
 }
 
-.schedule-poster {
+.track-schedule-poster {
     grid-area: poster;
     display: block;
     width: 40px;
@@ -71,7 +71,7 @@
     background: v.$bg-surface;
 }
 
-.schedule-title {
+.track-schedule-title {
     grid-area: title;
     align-self: end;
     color: v.$text-color;
@@ -84,7 +84,7 @@
     overflow: hidden;
 }
 
-.schedule-times {
+.track-schedule-times {
     grid-area: times;
     align-self: start;
     // Line the times' text up with the title, past their hover padding.
@@ -94,7 +94,7 @@
     gap: 2px v.$gap-xs;
 }
 
-.schedule-time {
+.track-schedule-time {
     display: inline-flex;
     align-items: center;
     gap: v.$padding-md;
@@ -110,23 +110,23 @@
 }
 
 // The dashboard's History: agenda entries whose run of episodes unfolds below.
-.history-item {
+.track-history-item {
     grid-template-areas:
         "poster title"
         "poster times"
         ". episodes";
 
-    >.schedule-times {
+    >.track-schedule-times {
         align-items: center;
     }
 }
 
-.history-toggle {
+.track-history-toggle {
     font-size: v.$font-xs;
     color: v.$text-muted;
 }
 
-.history-episodes {
+.track-history-episodes {
     grid-area: episodes;
     display: flex;
     flex-direction: column;
@@ -137,14 +137,14 @@
     list-style: none;
 }
 
-.history-watch {
+.track-history-watch {
     max-width: 100%;
     min-width: 0;
 }
 
 // The Schedule on wide screens: weekday names once, then a week per row of
 // soft day tiles holding compact entries. On phones it is the agenda.
-.calendar-weekdays {
+.track-calendar-weekdays {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: v.$gap-xs;
@@ -155,7 +155,7 @@
     letter-spacing: 0.04em;
 }
 
-.calendar-cell {
+.track-calendar-cell {
     display: flex;
     flex-direction: column;
     gap: v.$gap-xs;
@@ -168,11 +168,11 @@
         border-radius: v.$radius;
         background: color-mix(in srgb, v.$bg-surface 55%, transparent);
 
-        &.past {
+        &.track-past {
             opacity: 0.6;
         }
 
-        &.today {
+        &.track-today {
             background: color-mix(in srgb, v.$color-primary 12%, transparent);
         }
     }
@@ -182,7 +182,7 @@
 // poster. In that column align-self is horizontal, so everything sits flush
 // left. On phones the tile is an agenda day and these change nothing.
 @include g.on-desktop {
-    .schedule-item.compact {
+    .track-schedule-item.track-compact {
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -191,26 +191,26 @@
         border-radius: v.$radius-sm;
     }
 
-    .schedule-poster.compact {
+    .track-schedule-poster.track-compact {
         display: none;
     }
 
-    .schedule-title.compact {
+    .track-schedule-title.track-compact {
         align-self: stretch;
         font-size: v.$font-xs;
     }
 
-    .schedule-times.compact {
+    .track-schedule-times.track-compact {
         align-self: stretch;
         margin-inline-start: 0;
     }
 
-    .schedule-time.compact {
+    .track-schedule-time.track-compact {
         padding: 0;
     }
 }
 
-.calendar-day-number {
+.track-calendar-day-number {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -221,7 +221,7 @@
     font-weight: v.$bold-weight;
     color: v.$text-muted;
 
-    &.today {
+    &.track-today {
         background: var(--accent-selected);
         color: v.$text-color-selected;
     }

@@ -4,6 +4,7 @@ use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
@@ -154,16 +155,16 @@ impl Component for Search {
 
         html! {
             <>
-                <h1 class="sockel-visually-hidden">{"Search"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Search"}</h1>
 
-                <div class="list-controls">
-                    <div class="search-field">
-                        <span class="icon magnifying-glass" aria-hidden="true" />
+                <div class={class::LIST_CONTROLS}>
+                    <div class={class::SEARCH_FIELD}>
+                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
                         <input type="text" placeholder={SEARCH} aria-label="Search for shows and movies" ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
-                        <Button icon="arrow-right" title="Search" variant={Variant::Primary} onclick={on_submit} />
+                        <Button icon={class::ICON_ARROW_RIGHT} title="Search" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
-                    <div class="chips sockel-cluster">
+                    <div class={classes!(class::CHIPS, sockel::class::CLUSTER)}>
                         <MediaKindToggle
                             selection={self.selection}
                             on_change={link.callback(Msg::SelectionChanged)}
@@ -333,7 +334,7 @@ impl Search {
     fn view_results(&self, ctx: &Context<Self>) -> Html {
         if self.query.is_empty() {
             return html! {
-                <p class="text-muted">
+                <p class={class::TEXT_MUTED}>
                     {"Search TMDB and TVDB for shows and movies to "}
                     // Wraps with the last word instead of alone on a line.
                     <span style="white-space: nowrap">
@@ -348,12 +349,12 @@ impl Search {
             return if self.loading {
                 html! {
                     <div aria-busy="true">
-                        { for (0..3).map(|_| html! { <Skeleton class="search-skeleton" /> }) }
+                        { for (0..3).map(|_| html! { <Skeleton class={class::SEARCH_SKELETON} /> }) }
                     </div>
                 }
             } else {
                 html! {
-                    <p class="text-muted">{format!("No results for \u{201c}{}\u{201d}.", self.query)}</p>
+                    <p class={class::TEXT_MUTED}>{format!("No results for \u{201c}{}\u{201d}.", self.query)}</p>
                 }
             };
         }
@@ -367,8 +368,8 @@ impl Search {
 
         html! {
             <>
-                <div class="page-controls">
-                    <span class="text-muted">{results_count(self.total)}</span>
+                <div class={class::PAGE_CONTROLS}>
+                    <span class={class::TEXT_MUTED}>{results_count(self.total)}</span>
                 </div>
 
                 <div>
@@ -376,14 +377,14 @@ impl Search {
                 </div>
 
                 if self.loading {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}><span class={classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN)} aria-hidden="true" /></span>
                     </div>
                 } else if self.end {
-                    <p class="text-muted center">{"No more results."}</p>
+                    <p class={classes!(class::TEXT_MUTED, class::CENTER)}>{"No more results."}</p>
                 } else if self.results.len() < self.total {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <Button icon="ellipsis-horizontal" title="Load more results" label="More results" onclick={on_more} />
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <Button icon={class::ICON_ELLIPSIS_HORIZONTAL} title="Load more results" label="More results" onclick={on_more} />
                     </div>
                 }
             </>
@@ -394,9 +395,9 @@ impl Search {
     /// overview and the sources it came from, with Track or Tracked beside it.
     fn view_row(&self, ctx: &Context<Self>, row: &Row<'_>) -> Html {
         let (kind_icon, kind_label) = if row.movie {
-            ("film", "Movie")
+            (class::ICON_FILM, "Movie")
         } else {
-            ("tv", "Show")
+            (class::ICON_TV, "Show")
         };
 
         let title = row.title.unwrap_or(if row.movie {
@@ -407,7 +408,7 @@ impl Search {
 
         let action = match (&row.tracked, &row.track) {
             (Some(to), _) => html! {
-                <Button to={to.clone()} icon="check" label="Tracked" title={format!("Open the tracked {}", kind_label.to_lowercase())} />
+                <Button to={to.clone()} icon={class::ICON_CHECK} label="Tracked" title={format!("Open the tracked {}", kind_label.to_lowercase())} />
             },
             (None, Some(track)) => {
                 let track = track.clone();
@@ -417,59 +418,59 @@ impl Search {
                 });
 
                 html! {
-                    <Button icon="plus" label="Track" title={format!("Track {}", kind_label.to_lowercase())} {onclick} />
+                    <Button icon={class::ICON_PLUS} label="Track" title={format!("Track {}", kind_label.to_lowercase())} {onclick} />
                 }
             }
             (None, None) => html! {},
         };
 
         html! {
-            <div key={row.key.clone()} class="search-result">
+            <div key={row.key.clone()} class={class::SEARCH_RESULT}>
                 if let Some(to) = &row.tracked {
-                    <Link to={to.clone()} class="search-poster" decorative=true>
+                    <Link to={to.clone()} class={class::SEARCH_POSTER} decorative=true>
                         <Image src={row.poster.cloned()} placeholder=true />
                     </Link>
                 } else {
-                    <span class="search-poster">
+                    <span class={class::SEARCH_POSTER}>
                         <Image src={row.poster.cloned()} placeholder=true />
                     </span>
                 }
 
-                <div class="search-body sockel-stack sockel-snug">
-                    <div class="search-heading">
-                        <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
+                <div class={classes!(class::SEARCH_BODY, sockel::class::STACK, sockel::class::SNUG)}>
+                    <div class={class::SEARCH_HEADING}>
+                        <span class={classes!(class::ICON, class::SM, kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
                         if let Some(to) = &row.tracked {
-                            <Link to={to.clone()} class="search-title title sm sockel-truncate"><>{title}</></Link>
+                            <Link to={to.clone()} class={classes!(class::SEARCH_TITLE, class::TITLE, class::SM, sockel::class::TRUNCATE)}><>{title}</></Link>
                         } else {
-                            <span class="search-title title sm sockel-truncate">{title}</span>
+                            <span class={classes!(class::SEARCH_TITLE, class::TITLE, class::SM, sockel::class::TRUNCATE)}>{title}</span>
                         }
 
                         if let Some(year) = row.year {
-                            <span class="search-year sockel-numeric">{year.to_string()}</span>
+                            <span class={classes!(class::SEARCH_YEAR, sockel::class::NUMERIC)}>{year.to_string()}</span>
                         }
                     </div>
 
                     if let Some(overview) = row.overview {
-                        <p class="search-overview">{overview}</p>
+                        <p class={class::SEARCH_OVERVIEW}>{overview}</p>
                     }
 
-                    <div class="sockel-cluster sockel-nowrap sockel-tight">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT)}>
                         { for row.sources.iter().map(|(source, url)| html! {
                             if let Some(url) = url {
-                                <a class="search-source" href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>
-                                    <span class={classes!("logo", source.as_id())} aria-hidden="true" />
+                                <a class={class::SEARCH_SOURCE} href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>
+                                    <span class={classes!(class::LOGO, source.as_id())} aria-hidden="true" />
                                 </a>
                             } else {
-                                <span class="search-source" title={source.to_string()}>
-                                    <span class={classes!("logo", source.as_id())} aria-hidden="true" />
+                                <span class={class::SEARCH_SOURCE} title={source.to_string()}>
+                                    <span class={classes!(class::LOGO, source.as_id())} aria-hidden="true" />
                                 </span>
                             }
                         }) }
                     </div>
                 </div>
 
-                <div class="search-action">{action}</div>
+                <div class={class::SEARCH_ACTION}>{action}</div>
             </div>
         }
     }

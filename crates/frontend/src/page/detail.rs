@@ -8,6 +8,7 @@ use musli_web::web03::prelude::*;
 use yew::html::Scope;
 use yew::prelude::*;
 
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{Button, GraphicsSourceFilter, ImageGallery, ImageItem, Modal, Variant};
 
@@ -181,10 +182,10 @@ impl Graphics {
         let hidden = self.hidden_sources.clone();
 
         html! {
-            <Modal icon="photo" title="Graphics" {on_close}>
-                <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+            <Modal icon={class::ICON_PHOTO} title="Graphics" {on_close}>
+                <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                     <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(ImageMsg::ToggleGraphicsSource)} />
-                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| ImageMsg::PickBestImage(None))} />
+                    <Button icon={class::ICON_SPARKLES} variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| ImageMsg::PickBestImage(None))} />
                 </div>
                 {for self.items.iter().filter_map(|(&kind, items)| {
                     let items: Vec<ImageItem> = items

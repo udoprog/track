@@ -7,6 +7,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
 use sockel::{Skeleton, SkeletonShape};
@@ -182,7 +183,7 @@ impl Component for Calendar {
         let last = weeks[weeks.len() - 1].1[6];
 
         html! {
-            <div class="sockel-stack">
+            <div class={sockel::class::STACK}>
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous week",
@@ -199,38 +200,38 @@ impl Component for Calendar {
                 }) }
 
                 if self.options_open {
-                    <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
-                        <div class="form">
+                    <ContextMenu icon={class::ICON_ADJUSTMENTS_HORIZONTAL} prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
+                        <div class={class::FORM}>
                             { view_stepper("Weeks shown", "Fewer weeks", "More weeks", week_count, on_fewer, on_more) }
 
                             if can_reveal_week_start {
-                                <div class="field mobile-only">
+                                <div class={classes!(class::FIELD, class::MOBILE_ONLY)}>
                                     <label>{"Earlier this week"}</label>
-                                    <Button icon={if week_start { "eye-slash" } else { "eye" }} label={if week_start { "Hide past days" } else { "Show past days" }} title={if week_start { "Showing the days of this week before today" } else { "Hiding the days of this week before today" }} onclick={on_toggle_week_start} />
+                                    <Button icon={if week_start { class::ICON_EYE_SLASH } else { class::ICON_EYE }} label={if week_start { "Hide past days" } else { "Show past days" }} title={if week_start { "Showing the days of this week before today" } else { "Hiding the days of this week before today" }} onclick={on_toggle_week_start} />
                                 </div>
                             }
                         </div>
                     </ContextMenu>
                 }
 
-                <div class="calendar-grid sockel-stack sockel-loose">
+                <div class={classes!("calendar-grid", sockel::class::STACK, sockel::class::LOOSE)}>
                     { for weeks.iter().enumerate().flat_map(|(index, (month_band, days))| {
                         let monday = days[0];
 
                         let band = month_band.as_ref().map(|month_band| html! {
-                            <div key={format!("calendar-month-{monday}")} class="calendar-month title sm sockel-cluster sockel-nowrap sockel-loose">
+                            <div key={format!("calendar-month-{monday}")} class={classes!(class::CALENDAR_MONTH, class::TITLE, class::SM, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                                 {month_band}
                             </div>
                         });
 
                         let weekdays = (index == 0).then(|| html! {
-                            <div key="calendar-weekdays" class="calendar-weekdays desktop-only">
+                            <div key="calendar-weekdays" class={classes!(class::CALENDAR_WEEKDAYS, class::DESKTOP_ONLY)}>
                                 { for days.iter().map(|day| html! { <span>{day.weekday().short_name()}</span> }) }
                             </div>
                         });
 
                         let week = html! {
-                            <div key={format!("calendar-week-{monday}")} class="calendar-week">
+                            <div key={format!("calendar-week-{monday}")} class={class::CALENDAR_WEEK}>
                                 { for days.iter().enumerate().map(|(index, &day)| {
                                     let is_today = day == today;
                                     let is_past  = day < today;
@@ -240,22 +241,22 @@ impl Component for Calendar {
 
                                     html! {
                                         <div key={index} class={classes!(
-                                            "calendar-cell",
-                                            is_today.then_some("today"),
-                                            is_past.then_some("past"),
-                                            (is_past && !show_past).then_some("desktop-only"),
-                                            (known && items.is_empty()).then_some("desktop-only"),
+                                            class::CALENDAR_CELL,
+                                            is_today.then_some(class::TODAY),
+                                            is_past.then_some(class::PAST),
+                                            (is_past && !show_past).then_some(class::DESKTOP_ONLY),
+                                            (known && items.is_empty()).then_some(class::DESKTOP_ONLY),
                                         )}>
-                                            <span class={classes!("calendar-day-number", sockel::class::NUMERIC, "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
+                                            <span class={classes!(class::CALENDAR_DAY_NUMBER, sockel::class::NUMERIC, class::DESKTOP_ONLY, is_today.then_some(class::TODAY))}>{day.day()}</span>
 
-                                            <div class="mobile-only">
+                                            <div class={class::MOBILE_ONLY}>
                                                 { view_day_heading(day, today) }
                                             </div>
 
                                             if !known {
                                                 <Skeleton shape={SkeletonShape::Line} />
                                             } else if !items.is_empty() {
-                                                <div class="agenda-items">
+                                                <div class={class::AGENDA_ITEMS}>
                                                     { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover, true)) }
                                                 </div>
                                             }

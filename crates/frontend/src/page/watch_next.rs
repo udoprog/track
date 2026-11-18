@@ -10,6 +10,7 @@ use api::{TimeInfo, Timed};
 use sockel::{Ratio, Skeleton, SkeletonShape};
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
 use crate::ui::{
@@ -182,42 +183,42 @@ impl Component for WatchNext {
         let link = ctx.link();
 
         html! {
-            <div class="sockel-stack">
-                <div class="page-controls">
-                    <span class="text-muted">
+            <div class={sockel::class::STACK}>
+                <div class={class::PAGE_CONTROLS}>
+                    <span class={class::TEXT_MUTED}>
                         if self.pending_loaded {
                             { format!("{total} up next") }
                         }
                     </span>
 
-                    <div class="sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         if total_pages > 1 {
                             <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                         }
 
-                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
+                        <Button node_ref={self.options_anchor.clone()} icon={class::ICON_ADJUSTMENTS_HORIZONTAL} title="View options" class={classes!(class::CHIP, self.options_open.then_some(class::SELECTED))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
                 </div>
 
                 if self.options_open {
-                    <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
-                        <div class="form">
-                            <div class="field">
+                    <ContextMenu icon={class::ICON_ADJUSTMENTS_HORIZONTAL} prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
+                        <div class={class::FORM}>
+                            <div class={class::FIELD}>
                                 <label>{"Look ahead"}</label>
-                                <span class="hint">{"How far into the future upcoming episodes are included."}</span>
+                                <span class={class::HINT}>{"How far into the future upcoming episodes are included."}</span>
 
-                                <div class="input-group">
+                                <div class={class::INPUT_GROUP}>
                                     <DurationInput value={self.preferences.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
                                 </div>
                             </div>
 
-                            <div class="field">
+                            <div class={class::FIELD}>
                                 <label>{"Per page"}</label>
 
-                                <div class="sockel-cluster sockel-nowrap sockel-loose">
-                                    <Button icon="minus" title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
-                                    <span class="page-size sockel-numeric">{page_size}</span>
-                                    <Button icon="plus" title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
+                                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                                    <Button icon={class::ICON_MINUS} title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
+                                    <span class={classes!(class::PAGE_SIZE, sockel::class::NUMERIC)}>{page_size}</span>
+                                    <Button icon={class::ICON_PLUS} title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                                 </div>
                             </div>
                         </div>
@@ -225,19 +226,19 @@ impl Component for WatchNext {
                 }
 
                 if !self.pending_loaded {
-                    <div ref={self.grid.clone()} class="pending-grid" style={format!("--pending-columns: {}", self.columns)}>
+                    <div ref={self.grid.clone()} class={class::PENDING_GRID} style={format!("--pending-columns: {}", self.columns)}>
                         { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
                     </div>
                 } else if total == 0 {
-                    <p class="text-muted">{"Nothing pending."}</p>
+                    <p class={class::TEXT_MUTED}>{"Nothing pending."}</p>
                 } else {
-                    <div ref={self.grid.clone()} class="pending-grid" style={format!("--pending-columns: {}", self.columns)}>
+                    <div ref={self.grid.clone()} class={class::PENDING_GRID} style={format!("--pending-columns: {}", self.columns)}>
                         { for self.ordered().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
                     </div>
                 }
 
                 if total_pages > 1 {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
@@ -621,12 +622,12 @@ impl WatchNext {
     /// slot while the pending list is still loading.
     fn view_pending_skeleton() -> Html {
         html! {
-            <div class="pending-item sockel-stack">
-                <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class="desktop-only" />
-                <Skeleton shape={SkeletonShape::Image(Ratio::Banner)} class="mobile-only" />
+            <div class={classes!(class::PENDING_ITEM, sockel::class::STACK)}>
+                <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class={class::DESKTOP_ONLY} />
+                <Skeleton shape={SkeletonShape::Image(Ratio::Banner)} class={class::MOBILE_ONLY} />
 
-                <div class="pending-info sockel-stack">
-                    <div class="pending-content">
+                <div class={classes!(class::PENDING_INFO, sockel::class::STACK)}>
+                    <div class={class::PENDING_CONTENT}>
                         <Skeleton shape={SkeletonShape::Line} width="80%" />
                         <Skeleton shape={SkeletonShape::Line} width="50%" />
                     </div>
@@ -680,7 +681,7 @@ impl WatchNext {
                 api::PendingKind::Movie { .. } => "Released",
             };
 
-            TimePreset::at("calendar", label, timestamp)
+            TimePreset::at(class::ICON_CALENDAR, label, timestamp)
         });
 
         let aired_in_past = pending.aired.is_some_and(|a| a <= self.time.now());
@@ -702,7 +703,7 @@ impl WatchNext {
         let title = match &pending.info {
             api::PendingInfo::Movie { title, .. } => {
                 html! {
-                    <Link to={route.clone()} class="pending-title" title={title.clone()}>
+                    <Link to={route.clone()} class={class::PENDING_TITLE} title={title.clone()}>
                         <>{title.as_deref().unwrap_or("Untitled Movie")}</>
                     </Link>
                 }
@@ -716,12 +717,12 @@ impl WatchNext {
             } => {
                 html! {
                     <>
-                        <Link to={route.clone()} class="pending-title" title={show.clone()}>
+                        <Link to={route.clone()} class={class::PENDING_TITLE} title={show.clone()}>
                             <>{show.as_deref().unwrap_or("Untitled Show")}</>
                         </Link>
 
-                        <Link to={episode_route.clone()} class="pending-label">
-                            <span class="badge">{format!("{}E{number:02}", season.short())}</span>
+                        <Link to={episode_route.clone()} class={class::PENDING_LABEL}>
+                            <span class={class::BADGE}>{format!("{}E{number:02}", season.short())}</span>
                             {" "}
                             {episode.as_deref().unwrap_or("Untitled Episode")}
                         </Link>
@@ -742,44 +743,44 @@ impl WatchNext {
             .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
 
         html! {
-            <div {key} class="pending-item lift sockel-stack" {onmouseover}>
-                <Link to={route.clone()} class="pending-picture desktop-only" decorative=true>
-                    <Image class="poster artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
+            <div {key} class={classes!(class::PENDING_ITEM, class::LIFT, sockel::class::STACK)} {onmouseover}>
+                <Link to={route.clone()} class={classes!("pending-picture", class::DESKTOP_ONLY)} decorative=true>
+                    <Image class={classes!(class::POSTER, class::ARTWORK)} src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
                 </Link>
                 // A show without a banner still gets a picture on mobile, cropped from
                 // its backdrop or poster.
-                <Link to={route.clone()} class="pending-picture mobile-only" decorative=true>
-                    <Image class="banner" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
+                <Link to={route.clone()} class={classes!("pending-picture", class::MOBILE_ONLY)} decorative=true>
+                    <Image class={class::BANNER} placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
                 </Link>
 
-                <div class="pending-info sockel-stack">
-                    <div class="pending-content">
+                <div class={classes!(class::PENDING_INFO, sockel::class::STACK)}>
+                    <div class={class::PENDING_CONTENT}>
                         {title}
 
                         if let Some(aired) = pending.aired() {
-                            <span class={classes!("pending-date", (aired > self.time.now()).then_some("upcoming"))} title={aired.human_date_time(self.time.clone()).to_string()}>
+                            <span class={classes!(class::PENDING_DATE, (aired > self.time.now()).then_some(class::UPCOMING))} title={aired.human_date_time(self.time.clone()).to_string()}>
                                 { format!("{} {}", aired_verb(pending_kind, aired <= self.time.now()), aired.relative_to(self.time.now())) }
                             </span>
                         }
                     </div>
 
-                    <div class="sockel-cluster sockel-nowrap sockel-tight sockel-between">
-                        <div class="input-group">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT, sockel::class::BETWEEN)}>
+                        <div class={class::INPUT_GROUP}>
                             if aired_in_past {
-                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
+                                <MarkTimeMenu quick=true variant="primary" icon={class::ICON_CHECK} title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
                             } else {
-                                <Button icon="check" variant={Variant::Primary} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
+                                <Button icon={class::ICON_CHECK} variant={Variant::Primary} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
                         </div>
 
-                        <div class="sockel-cluster sockel-nowrap sockel-loose">
-                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))} />
+                        <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                            <MarkTimeMenu title="Move pending" icon={class::ICON_BOOKMARK} prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))} />
 
                             if let Some((show, episode)) = skip_ids {
-                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
+                                <Button key="skip-button" node_ref={anchor.clone()} icon={class::ICON_FORWARD} title="Skip episode" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
-                                    <Confirm icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))} on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)} />
+                                    <Confirm icon={class::ICON_FORWARD} prompt="Skip episode" label={code} anchor={anchor.clone()} on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))} on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)} />
                                 }
                             }
                         </div>

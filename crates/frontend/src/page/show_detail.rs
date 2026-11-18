@@ -13,6 +13,7 @@ use api::{TimeInfo, Timed};
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::active_tasks::{ActiveTasks, SyncTarget};
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
@@ -460,7 +461,7 @@ impl Component for ShowDetail {
         // page itself.
         if self.chips_scrolled != self.selected
             && let Some(chips) = self.season_chips.cast::<web_sys::HtmlElement>()
-            && let Ok(Some(chip)) = chips.query_selector(".selected")
+            && let Ok(Some(chip)) = chips.query_selector(&format!(".{}", class::SELECTED))
         {
             self.chips_scrolled = self.selected;
             let (strip, chip) = (
@@ -488,8 +489,8 @@ impl Component for ShowDetail {
             ShowState::Loading => return html!(<DetailSkeleton />),
             ShowState::Missing => {
                 return html! {
-                    <div class="box info">
-                        <span class="icon exclamation-triangle" aria-hidden="true" />
+                    <div class={classes!(class::BOX, class::INFO)}>
+                        <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                         <span>{"No such show"}</span>
                     </div>
                 };
@@ -508,28 +509,28 @@ impl Component for ShowDetail {
                     backdrop={show.backdrop.clone()}
                 />
 
-                <div class="toolbar">
-                    <div class="detail-sources sockel-cluster">
+                <div class={class::TOOLBAR}>
+                    <div class={classes!(class::DETAIL_SOURCES, sockel::class::CLUSTER)}>
                         {for show.remotes.iter().filter_map(|r| {
                             let url = r.remote.show_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
 
                             Some(html! {
-                                <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!("logo", id)} />
+                                <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                    <span class={classes!(class::LOGO, id)} />
                                 </a>
                             })
                         })}
                     </div>
 
-                    <div class="toolbar-toggle">
-                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
+                    <div class={class::TOOLBAR_TOGGLE}>
+                        <Button icon={if self.actions_expanded { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_BARS_2 }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
                     </div>
 
-                    <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("desktop-only"))}>
+                    <div class={classes!(class::TOOLBAR_DROPDOWN, class::DESKTOP_INPUT_GROUP, (!self.actions_expanded).then_some(class::DESKTOP_ONLY))}>
                         if !self.orphaned.is_empty() || props.orphaned {
                             <Button
-                                icon={if props.orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" }}
+                                icon={if props.orphaned { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_EXCLAMATION_TRIANGLE }}
                                 variant={Variant::Danger}
                                 title={if props.orphaned { "Showing orphaned watches" } else { "Hiding orphaned watches" }}
                                 pressed={Some(props.orphaned)}
@@ -544,16 +545,16 @@ impl Component for ShowDetail {
                             <SyncButton target={SyncTarget::Show(show.id)} onclick={link.callback(|_| ActionMsg::SyncShow)} text="Sync" />
                         }
 
-                        <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenShowTranslations)} />
+                        <Button icon={class::ICON_LANGUAGE} title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenShowTranslations)} />
 
                         if !show.alt_names.is_empty() || self.seasons.iter().any(|s| !s.alt_names.is_empty()) {
-                            <Button icon="tag" title="Other names" text="Names" onclick={link.callback(|_| UiMsg::OpenNames)} />
+                            <Button icon={class::ICON_TAG} title="Other names" text="Names" onclick={link.callback(|_| UiMsg::OpenNames)} />
                         }
 
-                        <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
+                        <Button icon={class::ICON_COG_6_TOOTH} title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
                         if self.auth.is_admin() {
-                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
+                            <Button node_ref={self.remove_anchor.clone()} icon={class::ICON_TRASH} variant={Variant::Danger} class={class::DETACHED} title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                             if self.confirm_remove {
                                 <Confirm prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_confirm={link.callback(|_| ActionMsg::RemoveShow)} on_cancel={link.callback(|_| ActionMsg::CancelRemove)} />
@@ -563,9 +564,9 @@ impl Component for ShowDetail {
                 </div>
 
                 if props.orphaned {
-                    <p class="hint">{ORPHAN_HINT}</p>
+                    <p class={class::HINT}>{ORPHAN_HINT}</p>
 
-                    <div class="detail-layout">
+                    <div class={class::DETAIL_LAYOUT}>
                         if let Some(season) = self.selected() {
                             { self.view_sidebar(ctx, show, season) }
                         } else {
@@ -577,10 +578,10 @@ impl Component for ShowDetail {
                 } else {
                     <TranslatedText strings={show.strings.clone()} />
 
-                    <div class="detail-layout">
-                        <div class="mobile-only">
+                    <div class={class::DETAIL_LAYOUT}>
+                        <div class={class::MOBILE_ONLY}>
                             if let Some(ref banner) = show.banner {
-                                <Image class="banner" src={banner.clone()} />
+                                <Image class={class::BANNER} src={banner.clone()} />
                             }
                         </div>
 
@@ -1820,17 +1821,17 @@ impl ShowDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="sockel-stack" data-testid="credits">
+            <section class={sockel::class::STACK} data-testid="credits">
                 <sockel::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
-                    <div class="cast-grid">
+                    <div class={class::CAST_GRID}>
                         { for shown.iter().map(cast_card) }
                     </div>
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle sockel-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon={class::ICON_USER_GROUP} label="Show all cast" title="Show all cast" class={classes!(class::CREDITS_TOGGLE, sockel::class::SELF_START)} onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {
@@ -1989,10 +1990,10 @@ impl ShowDetail {
         let poster = season.poster.as_ref().or(show.poster.as_ref());
 
         html! {
-            <div class="detail-sidebar sockel-stack sockel-loose">
-                <Image class="poster desktop-only artwork" src={poster.cloned()} />
+            <div class={classes!(class::DETAIL_SIDEBAR, sockel::class::STACK, sockel::class::LOOSE)}>
+                <Image class={classes!(class::POSTER, class::DESKTOP_ONLY, class::ARTWORK)} src={poster.cloned()} />
 
-                <nav class="season-list desktop-only sockel-stack sockel-tight" aria-label="Seasons">
+                <nav class={classes!(class::SEASON_LIST, class::DESKTOP_ONLY, sockel::class::STACK, sockel::class::TIGHT)} aria-label="Seasons">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
                 </nav>
             </div>
@@ -2016,7 +2017,7 @@ impl ShowDetail {
         let link = ctx.link();
 
         html! {
-            <Modal icon="photo" title="Season Graphics" on_close={link.callback(|_| SeasonImageMsg::CloseSeasonImageModal)}>
+            <Modal icon={class::ICON_PHOTO} title="Season Graphics" on_close={link.callback(|_| SeasonImageMsg::CloseSeasonImageModal)}>
                 {for self.season_graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
@@ -2042,11 +2043,11 @@ impl ShowDetail {
 
         let body = html! {
             <>
-                <span class="season-name sockel-truncate">{name.clone()}</span>
+                <span class={classes!(class::SEASON_NAME, sockel::class::TRUNCATE)}>{name.clone()}</span>
 
-                <span class="season-count sockel-numeric" title="Episodes watched">
+                <span class={classes!(class::SEASON_COUNT, sockel::class::NUMERIC)} title="Episodes watched">
                     if finished {
-                        <span class="icon sm check" aria-hidden="true" />
+                        <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} aria-hidden="true" />
                     }
 
                     if s.total_count > 0 {
@@ -2054,14 +2055,14 @@ impl ShowDetail {
                     }
                 </span>
 
-                <span class="season-year sockel-numeric">
+                <span class={classes!(class::SEASON_YEAR, sockel::class::NUMERIC)}>
                     if let Some(ts) = s.air_date {
                         {ts.date(self.time.clone()).year().to_string()}
                     }
                 </span>
 
                 if s.total_count > 0 {
-                    <span class="season-progress">
+                    <span class={class::SEASON_PROGRESS}>
                         <span style={format!("width: {:.0}%", watched as f64 * 100.0 / s.total_count as f64)} />
                     </span>
                 }
@@ -2069,9 +2070,9 @@ impl ShowDetail {
         };
 
         let class = classes!(
-            "season-row",
-            current.then_some("current"),
-            finished.then_some("finished")
+            class::SEASON_ROW,
+            current.then_some(class::CURRENT),
+            finished.then_some(class::FINISHED)
         );
 
         if self.seasons.len() > 1 {
@@ -2097,7 +2098,7 @@ impl ShowDetail {
         let current = self.selected().map(|s| s.id);
 
         html! {
-            <nav class="season-chips mobile-only sockel-cluster sockel-nowrap sockel-tight" aria-label="Seasons" ref={self.season_chips.clone()}>
+            <nav class={classes!(class::SEASON_CHIPS, class::MOBILE_ONLY, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT)} aria-label="Seasons" ref={self.season_chips.clone()}>
                 { for self.seasons.iter().map(|s| {
                     let season = s.season;
                     let is_current = current == Some(s.id);
@@ -2106,13 +2107,13 @@ impl ShowDetail {
                     let name = season_name(s);
 
                     html! {
-                        <Button class={classes!("chip", "fixed", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
+                        <Button class={classes!(class::CHIP, class::FIXED, is_current.then_some(class::SELECTED))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
                             <span>{name}</span>
 
                             if finished {
-                                <span class="icon sm check" aria-hidden="true" />
+                                <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} aria-hidden="true" />
                             } else if s.total_count > 0 {
-                                <span class="chip-count sockel-numeric">{format!("{watched}/{}", s.total_count)}</span>
+                                <span class={classes!(class::CHIP_COUNT, sockel::class::NUMERIC)}>{format!("{watched}/{}", s.total_count)}</span>
                             }
                         </Button>
                     }
@@ -2171,29 +2172,30 @@ impl ShowDetail {
             link.callback(move |_: MouseEvent| UiMsg::ToggleSeasonActionsExpanded(season_number));
 
         let next_episode_preset = next_unwatched.map(|(label, _)| {
-            TimePreset::when_aired("calendar", "Aired", format!("When {label} aired"))
+            TimePreset::when_aired(class::ICON_CALENDAR, "Aired", format!("When {label} aired"))
         });
 
         let remaining_description = format!(
             "When each individual episode in {} aired",
             season.season.long()
         );
-        let remaining_preset = TimePreset::when_aired("calendar", "Aired", remaining_description);
+        let remaining_preset =
+            TimePreset::when_aired(class::ICON_CALENDAR, "Aired", remaining_description);
         let watch_remaining = link.callback({
             let season = season.season;
             move |mark_time| WatchMsg::WatchRemaining(season, mark_time)
         });
 
         html! {
-            <div class="sockel-stack sockel-loose" data-testid="detail-content">
+            <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)} data-testid="detail-content">
                 { self.view_credits(ctx) }
 
                 { self.view_season_chips(ctx) }
 
                 // Keyed so a season switch replaces the column instead of
                 // patching it.
-                <div class="sockel-stack" key={season.id.to_string()}>
-                    <div class="toolbar">
+                <div class={sockel::class::STACK} key={season.id.to_string()}>
+                    <div class={class::TOOLBAR}>
                         <h2>
                             if let Some(name) = season.strings.title() {
                                 {name}
@@ -2202,33 +2204,33 @@ impl ShowDetail {
                             }
                         </h2>
 
-                        <div class="toolbar-toggle">
-                            <div class="input-group">
+                        <div class={class::TOOLBAR_TOGGLE}>
+                            <div class={class::INPUT_GROUP}>
                                 if let Some((ref label, _)) = pending_episode {
-                                    <Button icon="chevron-down" variant={Variant::Primary} href={format!("#{label}")} title="Jump to pending episode" />
+                                    <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} href={format!("#{label}")} title="Jump to pending episode" />
                                 }
 
-                                <Button icon={if season_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| UiMsg::ToggleSeasonActionsExpanded(season_number))} />
+                                <Button icon={if season_expanded { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_BARS_2 }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| UiMsg::ToggleSeasonActionsExpanded(season_number))} />
                             </div>
                         </div>
 
-                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("desktop-only"))}>
-                            <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenSeasonTranslations)} />
+                        <div class={classes!(class::TOOLBAR_DROPDOWN, class::DESKTOP_INPUT_GROUP, (!season_expanded).then_some(class::DESKTOP_ONLY))}>
+                            <Button icon={class::ICON_LANGUAGE} title="Season Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenSeasonTranslations)} />
 
                             if self.auth.is_admin() {
-                                <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| SeasonImageMsg::OpenSeasonImageModal)} />
+                                <Button icon={class::ICON_PHOTO} title="Season Graphics" text="Graphics" onclick={link.callback(|_| SeasonImageMsg::OpenSeasonImageModal)} />
                             }
 
                             if let Some((label, on_remove_next)) = pending_episode {
-                                <Button icon="chevron-down" variant={Variant::Primary} href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode" text={format!("Jump to next episode {label}")} />
+                                <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode" text={format!("Jump to next episode {label}")} />
 
-                                <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
+                                <Button icon={class::ICON_BOOKMARK} variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu trigger_icon="bookmark-slash" text={label} title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))} />
+                                <MarkTimeMenu trigger_icon={class::ICON_BOOKMARK_SLASH} text={label} title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))} />
                             }
 
                             if watched_count < total {
-                                <MarkTimeMenu variant="primary" trigger_icon="check" text="Remaining" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining} />
+                                <MarkTimeMenu variant="primary" trigger_icon={class::ICON_CHECK} text="Remaining" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining} />
                             }
                         </div>
                     </div>
@@ -2236,15 +2238,15 @@ impl ShowDetail {
                     <TranslatedText strings={season.strings.clone()} />
 
                     if total > 0 {
-                        <span class="text-muted">{format!("{watched_count} of {total} watched")}</span>
+                        <span class={class::TEXT_MUTED}>{format!("{watched_count} of {total} watched")}</span>
                     }
                 </div>
 
                 if self.episodes.is_empty() && self.selected.is_some() {
-                    <div class="text-muted">{"No episodes."}</div>
+                    <div class={class::TEXT_MUTED}>{"No episodes."}</div>
                 }
 
-                <div class="episodes">
+                <div class={class::EPISODES}>
                     { for self.episodes.iter().enumerate().map(|(i, ep)| html! {
                         <>
                             if let Some(Some(link)) = starts.get(i) {
@@ -2270,7 +2272,7 @@ impl ShowDetail {
         let count = self.picked.len();
 
         let aired = TimePreset::when_aired(
-            "calendar",
+            class::ICON_CALENDAR,
             "Aired",
             if count == 1 {
                 "When the episode aired"
@@ -2280,16 +2282,16 @@ impl ShowDetail {
         );
 
         html! {
-            <div class="selection-bar" role="region" aria-label="Selected episodes">
-                <span class="selection-count sockel-numeric">
+            <div class={class::SELECTION_BAR} role="region" aria-label="Selected episodes">
+                <span class={classes!(class::SELECTION_COUNT, sockel::class::NUMERIC)}>
                     {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
                 </span>
 
-                <div class="sockel-cluster sockel-tight">
-                    <MarkTimeMenu variant="primary" icon="check" label="Mark watched" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)} />
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT)}>
+                    <MarkTimeMenu variant="primary" icon={class::ICON_CHECK} label="Mark watched" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)} />
 
-                    <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| PickMsg::BulkSync)} />
-                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| PickMsg::ClearPicked)} />
+                    <Button icon={class::ICON_ARROW_PATH} label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| PickMsg::BulkSync)} />
+                    <Button icon={class::ICON_X_MARK} label="Clear" title="Clear the selection" onclick={link.callback(|_| PickMsg::ClearPicked)} />
                 </div>
             </div>
         }
@@ -2329,49 +2331,49 @@ impl ShowDetail {
 
         let preset = episode
             .aired
-            .map(|timestamp| TimePreset::at("calendar", "Aired", timestamp));
+            .map(|timestamp| TimePreset::at(class::ICON_CALENDAR, "Aired", timestamp));
 
         html! {
-            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
-                <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
-                    <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
-                    <span class="episode-pick-mark sockel-cluster sockel-nowrap sockel-loose sockel-center" aria-hidden="true">
-                        <span class="icon sm check" />
+            <div class={classes!(class::EPISODE, (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
+                <Button class={classes!(class::EPISODE_PICK, picked.then_some(class::PICKED))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
+                    <Image class={classes!(class::SCREENSHOT, class::ARTWORK)} placeholder={true} placeholder_icon={class::ICON_PHOTO} src={episode.screenshot.clone()} />
+                    <span class={classes!(class::EPISODE_PICK_MARK, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)} aria-hidden="true">
+                        <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} />
                     </span>
                 </Button>
 
-                <div class="sockel-stack sockel-tight">
-                    <div class="sockel-section-head">
-                        <div class="sockel-cluster sockel-tight sockel-baseline">
-                            <a class="episode-code sockel-numeric" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
+                <div class={classes!(sockel::class::STACK, sockel::class::TIGHT)}>
+                    <div class={sockel::class::SECTION_HEAD}>
+                        <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT, sockel::class::BASELINE)}>
+                            <a class={classes!(class::EPISODE_CODE, sockel::class::NUMERIC)} href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
                             if let Some(name) = episode.strings.title() {
-                                <h4 class="title sm">{name}</h4>
+                                <h4 class={classes!(class::TITLE, class::SM)}>{name}</h4>
                             }
                         </div>
 
-                        <div class="sockel-push-end sockel-cluster sockel-nowrap sockel-loose">
-                            <div class="input-group">
-                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
+                        <div class={classes!(sockel::class::PUSH_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                            <div class={class::INPUT_GROUP}>
+                                <MarkTimeMenu quick=true variant="primary" icon={class::ICON_CHECK} title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>
 
-                            <div class="input-group">
+                            <div class={class::INPUT_GROUP}>
                                 if episode.pending.is_some() {
-                                    <Button icon="bookmark" variant={Variant::Primary} title="Next episode" pressed={Some(true)} onclick={on_remove_next} />
+                                    <Button icon={class::ICON_BOOKMARK} variant={Variant::Primary} title="Next episode" pressed={Some(true)} onclick={on_remove_next} />
                                 } else {
-                                    <MarkTimeMenu icon="bookmark" title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode} />
+                                    <MarkTimeMenu icon={class::ICON_BOOKMARK} title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode} />
                                 }
 
-                                <Menu icon={html! { <span class="icon ellipsis-horizontal" /> }} title="More actions" label="Episode actions"
-                                    opener_class={classes!(menu_open.then_some("selected"))} align={PopoverAlign::Start} sheet=true
+                                <Menu icon={html! { <span class={classes!(class::ICON, class::ICON_ELLIPSIS_HORIZONTAL)} /> }} title="More actions" label="Episode actions"
+                                    opener_class={classes!(menu_open.then_some(class::SELECTED))} align={PopoverAlign::Start} sheet=true
                                     open={Some(menu_open)} on_toggle={on_toggle_menu} testid="episode-menu">
-                                    <MenuItem icon={html! { <span class={classes!("icon", "arrow-path", syncing.then_some("spin"))} /> }} onclick={link.callback(move |_| ActionMsg::SyncEpisode(episode_id))} testid="episode-sync">{"Sync episode"}</MenuItem>
-                                    <MenuItem icon={html! { <span class="icon language" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeTranslations(episode_id))} testid="episode-translations">{"Translations"}</MenuItem>
-                                    <MenuItem icon={html! { <span class="icon calendar" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeReleases(episode_id))} testid="episode-releases">{"Air dates"}</MenuItem>
-                                    <MenuItem icon={html! { <span class="icon circle-stack" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeCache(episode_id))} testid="episode-cache">{"Cache"}</MenuItem>
+                                    <MenuItem icon={html! { <span class={classes!(class::ICON, class::ICON_ARROW_PATH, syncing.then_some(class::SPIN))} /> }} onclick={link.callback(move |_| ActionMsg::SyncEpisode(episode_id))} testid="episode-sync">{"Sync episode"}</MenuItem>
+                                    <MenuItem icon={html! { <span class={classes!(class::ICON, class::ICON_LANGUAGE)} /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeTranslations(episode_id))} testid="episode-translations">{"Translations"}</MenuItem>
+                                    <MenuItem icon={html! { <span class={classes!(class::ICON, class::ICON_CALENDAR)} /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeReleases(episode_id))} testid="episode-releases">{"Air dates"}</MenuItem>
+                                    <MenuItem icon={html! { <span class={classes!(class::ICON, class::ICON_CIRCLE_STACK)} /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeCache(episode_id))} testid="episode-cache">{"Cache"}</MenuItem>
 
                                     if let Some(on_toggle) = on_toggle_history {
-                                        <MenuItem icon={html! { <span class="icon clock" /> }} onclick={on_toggle} testid="episode-history">{if history_expanded { "Hide watch history" } else { "Watch history" }}</MenuItem>
+                                        <MenuItem icon={html! { <span class={classes!(class::ICON, class::ICON_CLOCK)} /> }} onclick={on_toggle} testid="episode-history">{if history_expanded { "Hide watch history" } else { "Watch history" }}</MenuItem>
                                     }
                                 </Menu>
                             </div>
@@ -2379,15 +2381,15 @@ impl ShowDetail {
                     </div>
 
                     if !episode.numberings.is_empty() {
-                        <div class="episode-numberings">
+                        <div class={class::EPISODE_NUMBERINGS}>
                             { for episode.numberings.iter().map(view_numbering) }
                         </div>
                     }
 
-                    <div class="episode-meta sockel-cluster sockel-loose">
+                    <div class={classes!(class::EPISODE_META, sockel::class::CLUSTER, sockel::class::LOOSE)}>
                         <indicator title="Air date">
-                            <span class="item-inline">
-                                <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
+                            <span class={class::ITEM_INLINE}>
+                                <span class={classes!(class::ICON, if episode.aired().is_some() { class::ICON_CLOCK } else { class::ICON_EXCLAMATION_CIRCLE })} />
                             </span>
 
                             <content>
@@ -2402,16 +2404,16 @@ impl ShowDetail {
 
                         <indicator title="Watch status">
                         if episode.pending.is_some() {
-                            <span class="item-inline" title="Next episode">
-                                <span class="icon primary exclamation-circle" aria-hidden="true" />
+                            <span class={class::ITEM_INLINE} title="Next episode">
+                                <span class={classes!(class::ICON, class::PRIMARY, class::ICON_EXCLAMATION_CIRCLE)} aria-hidden="true" />
                             </span>
                         } else if !watched.is_empty() {
-                            <span class="item-inline" title="Watched">
-                                <span class="icon primary check-circle" aria-hidden="true" />
+                            <span class={class::ITEM_INLINE} title="Watched">
+                                <span class={classes!(class::ICON, class::PRIMARY, class::ICON_CHECK_CIRCLE)} aria-hidden="true" />
                             </span>
                         } else {
-                            <span class="item-inline" title="Never watched">
-                                <span class="icon secondary x-circle" aria-hidden="true" />
+                            <span class={class::ITEM_INLINE} title="Never watched">
+                                <span class={classes!(class::ICON, class::SECONDARY, class::ICON_X_CIRCLE)} aria-hidden="true" />
                             </span>
                         }
 
@@ -2421,7 +2423,7 @@ impl ShowDetail {
                                 {ts.human_date_time(self.time.clone()).lower().view()}
                             } else {
                                 {match watched {
-                                    [] => html!(<span class="special">{"Never watched"}</span>),
+                                    [] => html!(<span class={class::SPECIAL}>{"Never watched"}</span>),
                                     [w] => html! {
                                         <>
                                             <span>{"Watched once"}</span>
@@ -2444,9 +2446,9 @@ impl ShowDetail {
                 </div>
 
                 if history_expanded {
-                    <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| UiMsg::ToggleHistory(episode_id))}>
+                    <Modal icon={class::ICON_CLOCK} title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| UiMsg::ToggleHistory(episode_id))}>
                         if let Some(moving) = watched.iter().find(|w| self.fixing_watched == Some(w.watched.id)) {
-                            <p class="watch-move-lead">
+                            <p class={class::WATCH_MOVE_LEAD}>
                                 {"Move the watch from "}
                                 {moving.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
                                 {" to another episode."}
@@ -2463,20 +2465,20 @@ impl ShowDetail {
                                 on_cancel={link.callback(|_| WatchMsg::CancelFixWatched)}
                             />
                         } else {
-                            <div key="history" class="watch-history">
+                            <div key="history" class={class::WATCH_HISTORY}>
                                 { for watched.iter().map(|w| {
                                     let wid = w.watched.id;
                                     let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
                                     html! {
-                                        <div class="watch-row">
-                                            <span class="watch-when sockel-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
-                                            <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
+                                        <div class={class::WATCH_ROW}>
+                                            <span class={classes!(class::WATCH_WHEN, sockel::class::NUMERIC)}>{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                                            <span class={class::WATCH_AGE}>{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                                            <div class="start-on-mobile sockel-cluster sockel-nowrap sockel-tight sockel-end" ref={w.context_anchor.clone()}>
-                                                <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
+                                            <div class={classes!(class::START_ON_MOBILE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT, sockel::class::END)} ref={w.context_anchor.clone()}>
+                                                <Button icon={class::ICON_ARROW_UTURN_RIGHT} label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
 
-                                                <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
+                                                <Button icon={class::ICON_TRASH} label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
                                                     <Confirm prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))} on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)} />
@@ -2520,23 +2522,23 @@ impl ShowDetail {
         let show_id = props.show_id;
 
         html! {
-            <div class="sockel-stack sockel-loose" data-testid="detail-content">
-                <div class="table">
+            <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)} data-testid="detail-content">
+                <div class={class::TABLE}>
                     { for self.orphaned.iter().map(|w| {
                         let id = w.watched.id;
                         let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
                         html! {
-                            <div class="sockel-cluster sockel-between sockel-loose">
-                                <div class="sockel-cluster sockel-nowrap sockel-loose">
-                                    <span class="text-muted">{w.watched.code()}</span>
+                            <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
+                                <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                                    <span class={class::TEXT_MUTED}>{w.watched.code()}</span>
                                     <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                                 </div>
 
-                                <div ref={w.context_anchor.clone()} class="input-group">
-                                    <Button icon="pencil-square" title="Move to episode" expanded={Some(self.fixing_watched == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::FixWatched(id))} />
+                                <div ref={w.context_anchor.clone()} class={class::INPUT_GROUP}>
+                                    <Button icon={class::ICON_PENCIL_SQUARE} title="Move to episode" expanded={Some(self.fixing_watched == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::FixWatched(id))} />
 
-                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(id))} />
+                                    <Button icon={class::ICON_TRASH} variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(id))} />
                                 </div>
 
                                 if self.fixing_watched == Some(id) {
@@ -2584,8 +2586,8 @@ fn view_numbering(n: &api::AltNumbering) -> Html {
     };
 
     html! {
-        <span class="numbering-chip sockel-numeric" {title}>
-            <span class={classes!("logo", n.system.clone())} aria-hidden="true" />
+        <span class={classes!(class::NUMBERING_CHIP, sockel::class::NUMERIC)} {title}>
+            <span class={classes!(class::LOGO, n.system.clone())} aria-hidden="true" />
             <span class="numbering-chip-code">{code}</span>
         </span>
     }
@@ -2599,9 +2601,9 @@ fn linked_label(l: &api::LinkedSeason) -> String {
 /// The line before the first episode linked to `link`, naming that season.
 fn view_link_divider(link: &api::LinkedSeason) -> Html {
     html! {
-        <div class="numbering-divider" role="separator" aria-label={linked_label(link)}>
-            <span class={classes!("logo", link.system.clone())} title={api::xem_system_label(&link.system).to_owned()} />
-            <span class="numbering-divider-season">{format!("Season {}", link.season)}</span>
+        <div class={class::NUMBERING_DIVIDER} role="separator" aria-label={linked_label(link)}>
+            <span class={classes!(class::LOGO, link.system.clone())} title={api::xem_system_label(&link.system).to_owned()} />
+            <span class={class::NUMBERING_DIVIDER_SEASON}>{format!("Season {}", link.season)}</span>
         </div>
     }
 }

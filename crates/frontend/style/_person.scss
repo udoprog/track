@@ -1,13 +1,13 @@
 @use 'vars' as v;
 @use 'grid' as g;
 
-.person-grid {
+.track-person-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: v.$gap-sm;
 }
 
-.person-card {
+.track-person-card {
     display: flex;
     color: v.$text-color;
     flex-direction: column;
@@ -15,32 +15,32 @@
     min-width: 0;
 }
 
-.person-info {
+.track-person-info {
     display: flex;
     flex-direction: column;
     padding: 0 2px;
     gap: 2px;
 }
 
-.person-photo {
+.track-person-photo {
     aspect-ratio: 2 / 3;
     background: v.$bg-surface;
 }
 
-.person-name {
+.track-person-name {
     font-weight: v.$bold-weight;
     font-size: v.$font-sm;
     color: v.$text-primary;
 }
 
-.person-department,
-.person-credits {
+.track-person-department,
+.track-person-credits {
     font-size: v.$font-xs;
 }
 
 // A person's heading: the photo beside the name, actions and links, with the
 // biography under them, and under the photo too on phones.
-.person-detail-header {
+.track-person-detail-header {
     display: grid;
     grid-template-columns: min(180px, 40%) minmax(0, 1fr);
     // The photo keeps its aspect instead of stretching down a long biography.
@@ -55,7 +55,7 @@
     }
 }
 
-.person-detail-photo {
+.track-person-detail-photo {
     grid-row: span 2;
     aspect-ratio: 2 / 3;
     background: v.$bg-surface;
@@ -67,7 +67,7 @@
     }
 }
 
-.person-biography {
+.track-person-biography {
     grid-column: 2;
     color: v.$text-color;
     line-height: 1.5;
@@ -82,7 +82,7 @@
 }
 
 // Every part in a title, kept to two lines; the title attribute has them all.
-.person-roles {
+.track-person-roles {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;

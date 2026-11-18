@@ -6,7 +6,7 @@
 @mixin has-text-padding {
     padding: v.$padding v.$padding * 2;
 
-    >.icon:first-child {
+    >.track-icon:first-child {
         margin-inline-start: -0.25em;
     }
 }
@@ -14,7 +14,7 @@
 @mixin button-color($name) {
     background-color: var(--#{$name}-bg);
 
-    &.selected {
+    &.track-selected {
         background-color: var(--#{$name}-selected);
     }
 }
@@ -39,15 +39,15 @@ button {
 
     // Not sockel's drag handles, which grab and keep their edge (:where, so
     // this weighs what it did without them).
-    &:not(.disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
+    &:not(.track-disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
         cursor: pointer;
     }
 
-    &:hover:not(.disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
+    &:hover:not(.track-disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
         border-color: v.$color-primary;
     }
 
-    &.selected {
+    &.track-selected {
         background-color: var(--neutral-selected);
     }
 
@@ -75,25 +75,25 @@ button {
     @include g.on-mobile {
         height: v.$input-height-touch;
 
-        &:not(.sockel-button, .mobile-has-text) {
+        &:not(.sockel-button, .track-mobile-has-text) {
             justify-content: center;
             min-width: v.$input-height-touch;
         }
     }
 
-    &.disabled, &:disabled {
+    &.track-disabled, &:disabled {
         opacity: 0.5;
         cursor: default;
     }
 
-    &.selected {
+    &.track-selected {
         --icon-color: #{v.$text-color-selected};
         color: v.$text-color-selected;
     }
 }
 
 // A word joined to a field in an `.input-group`, such as a unit.
-.input-label {
+.track-input-label {
     display: flex;
     gap: v.$text-gap;
     align-items: center;
@@ -112,7 +112,7 @@ button {
     }
 }
 
-.input-number {
+.track-input-number {
     appearance: textfield;
     // As wide as the browser draws a number field, not sockel's field width.
     width: auto;

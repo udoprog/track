@@ -3,12 +3,12 @@
 
 // The body of the watch-time popover (MarkTimeMenu): preset chips, then the
 // resolved time or the custom fields, then Cancel and Confirm.
-.mark-time {
+.track-mark-time {
     min-width: min(320px, 100%);
 }
 
 // The custom date and time side by side, stacked on phones.
-.mark-time-fields {
+.track-mark-time-fields {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: v.$gap-sm;
@@ -27,7 +27,7 @@
 }
 
 // Kept in reach at the foot of the popover, even when its body scrolls.
-.mark-time-actions {
+.track-mark-time-actions {
     position: sticky;
     bottom: -(v.$gap);
     display: flex;
@@ -46,13 +46,13 @@
 }
 
 // The narrow trigger beside a quick mark button that opens the picker.
-.mark-time-more {
+.track-mark-time-more {
     // Set apart from the instant mark beside it, so they read as two targets.
     box-shadow: inset 1px 0 0 color-mix(in srgb, v.$text-on-accent 25%, transparent);
 }
 
 // The instant the selection resolves to, read as a preview rather than links.
-.mark-time-resolved {
+.track-mark-time-resolved {
     color: v.$text-muted;
 
     * {

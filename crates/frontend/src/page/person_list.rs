@@ -4,6 +4,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
 use crate::ui::{Button, Image, Link, Pager, SortMenu};
@@ -161,35 +162,35 @@ impl Component for PersonList {
         });
 
         let dir_icon = if self.desc {
-            "bars-arrow-down"
+            class::ICON_BARS_ARROW_DOWN
         } else {
-            "bars-arrow-up"
+            class::ICON_BARS_ARROW_UP
         };
         let dir_title = if self.desc { "Descending" } else { "Ascending" };
 
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="sockel-visually-hidden">{"People"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"People"}</h1>
 
-                <div class="list-controls">
-                    <div class="search-field">
-                        <span class="icon magnifying-glass" aria-hidden="true" />
+                <div class={class::LIST_CONTROLS}>
+                    <div class={class::SEARCH_FIELD}>
+                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
                         <input type="text" placeholder="Filter" aria-label="Filter people" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="x-mark" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon={class::ICON_X_MARK} title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
-                    <div class="chips sockel-cluster">
+                    <div class={classes!(class::CHIPS, sockel::class::CLUSTER)}>
                         <SortMenu
                             options={SORTS}
                             current={match self.sort { PersonSort::Name => "name", PersonSort::Credits => "credits" }}
                             on_change={on_sort}
                         />
 
-                        <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
+                        <Button icon={dir_icon} title={dir_title} class={class::CHIP} onclick={link.callback(|_| Msg::ToggleDir)} />
                     </div>
 
                     if self.loaded {
@@ -198,19 +199,19 @@ impl Component for PersonList {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}><span class={classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN)} aria-hidden="true" /></span>
                     </div>
                 } else if self.persons.is_empty() {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more">{"Nothing to show."}</span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}>{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="person-grid">
+                    <div class={class::PERSON_GRID}>
                         { for self.persons.iter().map(|p| self.view_card(p)) }
                     </div>
 
-                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
@@ -336,17 +337,17 @@ impl PersonList {
         let route = Route::PersonDetail(p.id);
 
         html! {
-            <Link key={p.id.to_string()} to={route} class="person-card lift">
-                <Image class="person-photo artwork" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
+            <Link key={p.id.to_string()} to={route} class={classes!(class::PERSON_CARD, class::LIFT)}>
+                <Image class={classes!(class::PERSON_PHOTO, class::ARTWORK)} placeholder={true} placeholder_icon={class::ICON_USER} src={p.profile.clone()} alt={name.clone()} />
 
-                <div class="person-info">
-                    <div class="person-name">{ name }</div>
+                <div class={class::PERSON_INFO}>
+                    <div class={class::PERSON_NAME}>{ name }</div>
 
                     if let Some(department) = p.department.department() {
-                        <div class="person-department text-muted">{ department.to_owned() }</div>
+                        <div class={classes!(class::PERSON_DEPARTMENT, class::TEXT_MUTED)}>{ department.to_owned() }</div>
                     }
 
-                    <div class="person-credits text-muted">
+                    <div class={classes!(class::PERSON_CREDITS, class::TEXT_MUTED)}>
                         { format!("{} credit{}", p.credit_count, if p.credit_count == 1 { "" } else { "s" }) }
                     </div>
                 </div>

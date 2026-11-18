@@ -1,13 +1,13 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-.cast-grid {
+.track-cast-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: v.$gap-sm;
 }
 
-.cast-card {
+.track-cast-card {
     display: flex;
     color: v.$text-color;
     flex-direction: column;
@@ -15,36 +15,36 @@
 
     // On a dialog's surface: one step above it, as the page's cards are above
     // the page.
-    &.raised {
+    &.track-raised {
         background: v.$bg-panel;
         --cast-photo-bg: #{v.$bg-panel};
     }
 }
 
-.cast-info {
+.track-cast-info {
     display: flex;
     flex-direction: column;
     padding: v.$padding-md;
     gap: v.$padding-md;
 }
 
-.cast-photo {
+.track-cast-photo {
     aspect-ratio: 2 / 3;
     background: var(--cast-photo-bg);
 }
 
-.cast-name {
+.track-cast-name {
     font-weight: v.$bold-weight;
     font-size: v.$font-sm;
     color: v.$text-primary;
 }
 
-.cast-character {
+.track-cast-character {
     font-size: v.$font-xs;
     color: v.$text-muted;
 }
 
-.credits-toggle {
+.track-credits-toggle {
     --icon-color: #{v.$link-color};
     background: none;
     border: none;
@@ -60,7 +60,7 @@
 // Stays in reach while a long cast scrolls under it, covering the modal
 // content's top padding so nothing shows above it (hence the negative offsets
 // of the dialog's $gap padding).
-.cast-search {
+.track-cast-search {
     position: sticky;
     top: calc(-1 * #{v.$gap});
     z-index: 1;

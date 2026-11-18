@@ -1,7 +1,7 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-.outline {
+.track-outline {
     display: none;
     position: sticky;
     top: v.$toolbar-height;
@@ -12,7 +12,7 @@
     cursor: pointer;
     width: 64px;
 
-    &.visible {
+    &.track-visible {
         display: grid;
         grid-template-rows: 1fr;
 
@@ -25,7 +25,7 @@
 
 // Where the viewport is: a thin bar along the edge, not a box that reads as a
 // panel or a button.
-.outline-mark {
+.track-outline-mark {
     grid-area: 1 / 1;
     align-self: start;
     justify-self: start;
@@ -37,7 +37,7 @@
     height: var(--outline-height, 0);
 }
 
-.outline-sample {
+.track-outline-sample {
     padding: v.$gap-xs;
     grid-area: 1 / 1;
     align-self: start;
@@ -47,16 +47,16 @@
     color: v.$text-primary;
     user-select: none;
 
-    &.hidden {
+    &.track-hidden {
         visibility: hidden;
     }
 
-    &.seen {
+    &.track-seen {
         color: v.$color-success;
         font-weight: v.$bold-weight;
     }
 
-    &.pending {
+    &.track-pending {
         color: v.$color-primary;
         font-weight: v.$bold-weight;
     }

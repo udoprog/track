@@ -46,18 +46,18 @@ p {
     padding: 0;
 }
 
-.clickable {
+.track-clickable {
     cursor: pointer;
     user-select: none;
 }
 
 // What a popover's prompt asks about, in bold after it.
-.context-menu-label {
+.track-context-menu-label {
     font-weight: v.$bold-weight;
 }
 
 // Holds the toast; takes no room of its own.
-.toast-region {
+.track-toast-region {
     display: contents;
 }
 
@@ -107,27 +107,27 @@ p {
         height: $input-height-touch;
     }
 
-    &.primary {
+    &.track-primary {
         color: v.$color-primary;
         --icon-color: #{v.$color-primary};
     }
 
-    &.success {
+    &.track-success {
         color: v.$color-success;
         --icon-color: #{v.$color-success};
     }
 
-    &.danger {
+    &.track-danger {
         color: v.$color-danger;
         --icon-color: #{v.$color-danger};
     }
 }
 
-.item-inline {
+.track-item-inline {
     @include item-inline-base(v.$input-height, v.$input-height-touch);
 }
 
-.item-inline-more {
+.track-item-inline-more {
     display: inline-flex;
     align-items: center;
     height: v.$input-height-xl;
@@ -138,7 +138,7 @@ p {
     }
 }
 
-.item-inline-source {
+.track-item-inline-source {
     display: inline-flex;
     align-items: center;
     height: v.$input-height;
@@ -148,14 +148,14 @@ p {
     }
 }
 
-.form {
+.track-form {
     display: flex;
     flex-direction: column;
     gap: v.$gap;
     align-items: stretch;
 }
 
-.field {
+.track-field {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -169,20 +169,20 @@ p {
         color: v.$text-color;
     }
 
-    &.error {
+    &.track-error {
         color: v.$color-danger;
     }
 }
 
 // Dates from each source in aligned columns: expand, considered, source,
 // country, network and date. A group's own dates follow it when expanded.
-.release-rows {
+.track-release-rows {
     display: grid;
     grid-template-columns: repeat(4, max-content) minmax(0, 1fr) max-content;
     column-gap: v.$gap-sm;
 }
 
-.release-row {
+.track-release-row {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
@@ -191,7 +191,7 @@ p {
     padding: v.$padding v.$padding-lg;
     font-size: v.$font-sm;
 
-    &.release-group {
+    &.track-release-group {
         width: 100%;
         height: auto;
         border: none;
@@ -205,11 +205,11 @@ p {
         }
     }
 
-    &:not(.release-group) {
+    &:not(.track-release-group) {
         color: v.$text-muted;
     }
 
-    >.release-date {
+    >.track-release-date {
         justify-self: end;
 
         * {
@@ -220,7 +220,7 @@ p {
 
 // Translations of a title or overview: the language in one column and the
 // text beside it, stacked on phones.
-.translations {
+.track-translations {
     h3 {
         color: v.$text-color;
         font-size: v.$font-lg;
@@ -228,7 +228,7 @@ p {
     }
 }
 
-.translation-rows {
+.track-translation-rows {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     column-gap: v.$gap;
@@ -236,14 +236,14 @@ p {
 
     // Stacked on phones unless `.beside` keeps the languages beside the text.
     @include g.on-mobile {
-        &:not(.beside) {
+        &:not(.track-beside) {
             grid-template-columns: minmax(0, 1fr);
             row-gap: v.$gap;
         }
     }
 }
 
-.translation-row {
+.track-translation-row {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
@@ -251,7 +251,7 @@ p {
     row-gap: v.$padding;
 }
 
-.translation-language {
+.track-translation-language {
     display: inline-flex;
     align-items: center;
     gap: v.$padding-md;
@@ -260,12 +260,12 @@ p {
     white-space: nowrap;
 
     // A source that gives no language, or a name that names none.
-    &.unknown {
+    &.track-unknown {
         font-style: italic;
     }
 
     // A flag sized like an icon, not like a touch target.
-    >.item-inline {
+    >.track-item-inline {
         height: v.$icon-size;
         min-width: 0;
     }
@@ -274,7 +274,7 @@ p {
 // A watch history: one row per watch with its date and time, how long ago
 // that was, and its actions, all in aligned columns. Phones put the actions
 // under the date.
-.watch-history {
+.track-watch-history {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr) auto;
     column-gap: v.$gap;
@@ -284,7 +284,7 @@ p {
     }
 }
 
-.watch-row {
+.track-watch-row {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
@@ -292,7 +292,7 @@ p {
     row-gap: v.$padding-md;
     padding-block: v.$gap-xs;
 
-    &+.watch-row {
+    &+.track-watch-row {
         border-top: 1px solid v.$border-subtle-transparent;
     }
 
@@ -301,33 +301,33 @@ p {
             "when age"
             "actions actions";
 
-        >.watch-when {
+        >.track-watch-when {
             grid-area: when;
         }
 
-        >.watch-age {
+        >.track-watch-age {
             grid-area: age;
             text-align: end;
         }
 
-        >.actions {
+        >.track-actions {
             grid-area: actions;
         }
     }
 }
 
-.watch-when {
+.track-watch-when {
     * {
         color: inherit;
     }
 }
 
-.watch-age {
+.track-watch-age {
     color: v.$text-muted;
     font-size: v.$font-sm;
 }
 
-.watch-move-lead {
+.track-watch-move-lead {
     color: v.$text-muted;
 
     * {
@@ -336,20 +336,20 @@ p {
 }
 
 // Choosing an episode: labelled season and episode fields over the actions.
-.remote-link {
+.track-remote-link {
     color: v.$text-color;
 
-    >.logo {
+    >.track-logo {
         height: 20px;
         padding: 0;
     }
 }
 
-a.remote-link:hover .mono {
+a.track-remote-link:hover .track-mono {
     text-decoration: underline;
 }
 
-.remote-cache {
+.track-remote-cache {
     font-size: v.$font-sm;
 
     >dl {
@@ -371,7 +371,7 @@ a.remote-link:hover .mono {
     }
 }
 
-.remote-errors {
+.track-remote-errors {
     flex-basis: 100%;
     display: grid;
     grid-template-columns: repeat(2, max-content) minmax(0, 1fr) max-content;
@@ -381,17 +381,17 @@ a.remote-link:hover .mono {
 // Search results: compact rows of a small poster, the title with its kind
 // and year, two lines of overview and the sources, with the action on the
 // right (under the text on phones).
-.sockel-skeleton.tall {
+.sockel-skeleton.track-tall {
     --skeleton-height: #{v.$input-height-xl * 2};
 }
 
-.search-skeleton {
+.track-search-skeleton {
     height: v.$skeleton-result;
     margin-block: v.$gap-xs;
     border-radius: v.$radius;
 }
 
-.search-result {
+.track-search-result {
     display: grid;
     grid-template-columns: 56px minmax(0, 1fr) auto;
     grid-template-areas: "poster body action";
@@ -400,7 +400,7 @@ a.remote-link:hover .mono {
     row-gap: v.$gap-xs;
     padding-block: v.$gap-sm;
 
-    &+.search-result {
+    &+.track-search-result {
         border-top: 1px solid v.$border-subtle-transparent;
     }
 
@@ -412,7 +412,7 @@ a.remote-link:hover .mono {
     }
 }
 
-.search-poster {
+.track-search-poster {
     grid-area: poster;
     display: block;
 
@@ -423,33 +423,33 @@ a.remote-link:hover .mono {
     }
 }
 
-.search-body {
+.track-search-body {
     grid-area: body;
 }
 
-.search-heading {
+.track-search-heading {
     display: flex;
     align-items: baseline;
     gap: v.$padding-md;
     --icon-color: #{v.$text-muted};
 
-    >.icon {
+    >.track-icon {
         align-self: center;
         flex: none;
     }
 }
 
-a.search-title:hover {
+a.track-search-title:hover {
     text-decoration: underline;
 }
 
-.search-year {
+.track-search-year {
     flex: none;
     color: v.$text-muted;
     font-size: v.$font-sm;
 }
 
-.search-overview {
+.track-search-overview {
     color: v.$text-muted;
     font-size: v.$font-sm;
     // Two lines at most (the clamp-lines mixin is defined further down).
@@ -459,7 +459,7 @@ a.search-title:hover {
     overflow: hidden;
 }
 
-.search-source {
+.track-search-source {
     display: inline-flex;
     height: 18px;
     opacity: 0.75;
@@ -468,19 +468,19 @@ a.search-title:hover {
         opacity: 1;
     }
 
-    >.logo {
+    >.track-logo {
         height: 100%;
         padding: 0;
     }
 }
 
-.search-action {
+.track-search-action {
     grid-area: action;
     justify-self: start;
 }
 
 // The settings page: sections of form rows in one readable column.
-.settings {
+.track-settings {
     display: flex;
     flex-direction: column;
     gap: v.$gap * 2;
@@ -504,7 +504,7 @@ a.search-title:hover {
 // Administrators get the settings as pages: a list of them beside the page
 // on a wide screen, and on a phone the list alone at /settings with each page
 // on its own.
-.settings-layout.has-nav {
+.track-settings-layout.track-has-nav {
     display: grid;
     gap: v.$gap * 2;
 
@@ -514,7 +514,7 @@ a.search-title:hover {
     }
 }
 
-.settings-nav {
+.track-settings-nav {
     display: flex;
     flex-direction: column;
 
@@ -525,7 +525,7 @@ a.search-title:hover {
 }
 
 // The current page is marked by accent text alone.
-.settings-nav-item {
+.track-settings-nav-item {
     padding: v.$padding-lg 0;
     color: v.$text-muted;
     text-decoration: none;
@@ -534,7 +534,7 @@ a.search-title:hover {
         color: v.$text-color;
     }
 
-    &.active {
+    &.track-active {
         color: v.$link-color;
         font-weight: 600;
     }
@@ -563,7 +563,7 @@ a.search-title:hover {
 }
 
 // Back to the list of pages, which only phones need.
-.settings-back {
+.track-settings-back {
     color: v.$link-color;
     text-decoration: none;
 
@@ -573,7 +573,7 @@ a.search-title:hover {
 }
 
 // A field's problem, said under it.
-.field-error {
+.track-field-error {
     flex-basis: 100%;
     color: v.$color-danger;
     font-size: v.$font-sm;
@@ -783,7 +783,7 @@ h1.auth-heading {
 
 // The users as a table, with a heading row holding Add user; phones stack
 // each user as a card.
-.settings.wide {
+.track-settings.track-wide {
     max-width: none;
 }
 
@@ -929,19 +929,19 @@ h1.auth-heading {
 .sockel-field-inputs.sockel-stacked {
     >select,
     >button,
-    >.input-number,
-    >.input-group {
+    >.track-input-number,
+    >.track-input-group {
         align-self: flex-start;
     }
 }
 
 // Content under a row that needs the whole width, such as a rule editor.
-.form-wide {
+.track-form-wide {
     grid-column: 1 / -1;
     min-width: 0;
 }
 
-.hint {
+.track-hint {
     color: v.$text-muted;
     font-size: v.$font-xs;
 }
@@ -954,7 +954,7 @@ h1.auth-heading {
     overflow: hidden;
 }
 
-.pending-title {
+.track-pending-title {
     font-size: v.$font-base;
     font-weight: v.$bold-weight;
     line-height: 1.3;
@@ -962,7 +962,7 @@ h1.auth-heading {
     @include clamp-lines(2);
 }
 
-.site-title {
+.track-site-title {
     color: v.$color-title;
     font-size: v.$font-title;
     font-weight: v.$bold-weight;
@@ -978,7 +978,7 @@ h1.auth-heading {
     padding: 0;
     font-weight: v.$bold-weight;
 
-    &.center {
+    &.track-center {
         justify-content: center;
     }
 
@@ -1019,12 +1019,12 @@ h4, h5, h6 {
     font-size: v.$font-base;
 }
 
-.text-muted {
+.track-text-muted {
     color: v.$text-muted;
     font-size: v.$font-sm;
 }
 
-.pending-grid {
+.track-pending-grid {
     display: grid;
     grid-template-columns: repeat(var(--pending-columns, 4), minmax(0, 1fr));
     gap: v.$gap;
@@ -1036,24 +1036,24 @@ h4, h5, h6 {
 
 // Artwork in a card: rounded, with a soft shadow, lifting while its card
 // (marked `.lift`) is hovered.
-.artwork {
+.track-artwork {
     border-radius: v.$radius-lg;
     overflow: hidden;
     box-shadow: 0 4px 14px v.$shadow;
     transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
-.lift:hover .artwork {
+.track-lift:hover .track-artwork {
     transform: translateY(-3px);
     box-shadow: 0 10px 24px v.$shadow-strong;
 }
 
 // A What's Next card. On wide screens the poster is the card; on phones a
 // soft panel holds the banner and text.
-.pending-item {
+.track-pending-item {
     position: relative;
 
-    image.banner {
+    image.track-banner {
         border-radius: v.$radius;
         overflow: hidden;
     }
@@ -1113,12 +1113,12 @@ image {
         object-fit: cover;
     }
 
-    &.screenshot {
+    &.track-screenshot {
         aspect-ratio: 16 / 9;
         background: v.$bg-surface;
     }
 
-    &.poster {
+    &.track-poster {
         aspect-ratio: 2 / 3;
 
         &-side {
@@ -1126,30 +1126,30 @@ image {
         }
     }
 
-    &.banner {
+    &.track-banner {
         aspect-ratio: 21 / 4;
     }
 
     // A placeholder for a missing picture stays quiet.
-    .icon {
+    .track-icon {
         height: v.$input-height-touch;
         width: v.$input-height-touch;
         --icon-color: #{v.$text-muted};
     }
 }
 
-.pending-info {
+.track-pending-info {
     flex: 1;
 }
 
-.pending-content {
+.track-pending-content {
     display: flex;
     flex-direction: column;
     gap: v.$padding;
     flex: 1;
 }
 
-.pending-label {
+.track-pending-label {
     font-size: v.$font-sm;
     line-height: 1.4;
     color: v.$text-color;
@@ -1157,7 +1157,7 @@ image {
 }
 
 // A short tag set before a name, such as an episode code or a task's kind.
-.badge {
+.track-badge {
     flex: none;
     padding: 1px 6px;
     border-radius: v.$radius-sm;
@@ -1168,27 +1168,27 @@ image {
     color: v.$text-muted;
 }
 
-.pending-date {
+.track-pending-date {
     font-size: v.$font-xs;
     color: v.$text-muted;
 
-    &.upcoming {
+    &.track-upcoming {
         color: v.$color-primary;
     }
 }
 
-.fill {
+.track-fill {
     flex: 1;
     min-width: 0;
 }
 
-.center {
+.track-center {
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.status {
+.track-status {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1208,7 +1208,7 @@ image {
     }
 }
 
-.detail-layout {
+.track-detail-layout {
     display: grid;
     grid-template-columns: v.$sidebar-width 1fr;
     gap: v.$gap;
@@ -1219,7 +1219,7 @@ image {
     }
 }
 
-.detail-sidebar {
+.track-detail-sidebar {
     @include g.on-desktop {
         width: v.$sidebar-width;
         height: 100%;
@@ -1228,7 +1228,7 @@ image {
 
 // The seasons beside the episodes on wide screens (a `.desktop-column`). It stays in view below the
 // app bar while the episodes scroll, and scrolls itself if it is too long.
-.season-list {
+.track-season-list {
     position: sticky;
     top: v.$toolbar-height + v.$gap;
     max-height: calc(100vh - #{v.$toolbar-height + v.$gap * 2});
@@ -1237,7 +1237,7 @@ image {
 
 // One season: name, watched count and year on a line, over a bar showing how
 // much of it is watched.
-.season-row {
+.track-season-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto 4ch;
     grid-template-areas:
@@ -1262,38 +1262,38 @@ image {
     }
 
     // The season shown: its name in accent, no box around it.
-    &.current>.season-name {
+    &.track-current>.track-season-name {
         color: v.$color-primary;
         font-weight: v.$bold-weight;
     }
 
-    >.season-name {
+    >.track-season-name {
         grid-area: name;
     }
 
-    >.season-count,
-    >.season-year {
+    >.track-season-count,
+    >.track-season-year {
         color: v.$text-muted;
         font-weight: normal;
         text-align: end;
     }
 
-    >.season-count {
+    >.track-season-count {
         grid-area: count;
         display: inline-flex;
         align-items: center;
         gap: v.$padding;
     }
 
-    &.finished>.season-count {
+    &.track-finished>.track-season-count {
         --icon-color: #{v.$color-primary};
     }
 
-    >.season-year {
+    >.track-season-year {
         grid-area: year;
     }
 
-    >.season-progress {
+    >.track-season-progress {
         grid-area: bar;
         display: block;
         height: 4px;
@@ -1310,19 +1310,19 @@ image {
 
 // The seasons on phones (a `.mobile-row`): one row of chips over the episodes, scrolling
 // sideways when there are many.
-.season-chips {
+.track-season-chips {
     overflow-x: auto;
     padding-block: v.$padding;
     scrollbar-width: none;
 }
 
-.episodes {
+.track-episodes {
     display: flex;
     flex-direction: column;
 
     // An episode: its still beside its heading, actions, dates and
     // overview, all shown at once. Phones put the still on top.
-    >.episode {
+    >.track-episode {
         display: grid;
         grid-template-columns: 220px minmax(0, 1fr);
         align-items: start;
@@ -1342,7 +1342,7 @@ image {
 
 // An episode's still, which picks the episode for a bulk action. A check in
 // its corner shows on hover and stays while it is picked.
-.episode-pick {
+.track-episode-pick {
     position: relative;
     display: block;
     height: auto;
@@ -1352,7 +1352,7 @@ image {
     background: none;
 
     // The mark is a `.sockel-cluster.sockel-center`; this places and draws it.
-    >.episode-pick-mark {
+    >.track-episode-pick-mark {
         position: absolute;
         top: v.$gap-xs;
         left: v.$gap-xs;
@@ -1366,16 +1366,16 @@ image {
         transition: opacity 0.1s ease-out;
     }
 
-    &:hover>.episode-pick-mark,
-    &:focus-visible>.episode-pick-mark {
+    &:hover>.track-episode-pick-mark,
+    &:focus-visible>.track-episode-pick-mark {
         opacity: 1;
     }
 
-    &.picked {
+    &.track-picked {
         outline: 3px solid v.$color-primary;
         outline-offset: -3px;
 
-        >.episode-pick-mark {
+        >.track-episode-pick-mark {
             opacity: 1;
             border-color: v.$color-primary;
             background: v.$color-primary;
@@ -1385,7 +1385,7 @@ image {
 }
 
 // What can be done with the picked episodes, kept at the foot of the screen.
-.selection-bar {
+.track-selection-bar {
     position: sticky;
     bottom: v.$gap;
     z-index: 5;
@@ -1406,12 +1406,12 @@ image {
     }
 }
 
-.selection-count {
+.track-selection-count {
     font-weight: v.$bold-weight;
 }
 
 // Dates and watch state (a `.sockel-cluster`): quiet text, not links.
-.episode-meta {
+.track-episode-meta {
     font-size: v.$font-sm;
     color: v.$text-muted;
     --icon-color: #{v.$text-muted};
@@ -1419,12 +1419,12 @@ image {
     datetime,
     date,
     time,
-    .special {
+    .track-special {
         color: inherit;
     }
 }
 
-.overview {
+.track-overview {
     font-size: v.$font-base;
     line-height: 1.5em;
 
@@ -1435,7 +1435,7 @@ image {
 // The language picker trigger inside translated text sections: strips the
 // standard button chrome down to a bare flag, floated at the top right of the
 // text so the rows flow around it instead of it reserving a row of its own.
-.language-toggle {
+.track-language-toggle {
     float: right;
 
     display: inline-flex;
@@ -1466,7 +1466,7 @@ image {
 }
 
 // An episode's code: quiet text that links to the episode.
-.episode-code {
+.track-episode-code {
     flex: none;
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
@@ -1479,7 +1479,7 @@ image {
     }
 }
 
-.box {
+.track-box {
     display: flex;
     flex-direction: row;
     gap: v.$gap;
@@ -1489,7 +1489,7 @@ image {
     width: 100%;
     margin: 0 auto;
 
-    &.info {
+    &.track-info {
         background: v.$bg-dark-transparent;
         border: 1px solid v.$border-subtle;
     }
@@ -1499,7 +1499,7 @@ image {
     }
 }
 
-.background {
+.track-background {
     position: fixed;
     inset: 0;
     isolation: isolate;
@@ -1507,12 +1507,12 @@ image {
     overflow: hidden;
 }
 
-.background>* {
+.track-background>* {
     position: relative;
     z-index: 1;
 }
 
-.background-image {
+.track-background-image {
     position: fixed;
     inset: 0;
     background-size: cover;
@@ -1559,7 +1559,7 @@ image {
         }
 
         // Set apart from the group, e.g. a destructive action.
-        &.detached {
+        &.track-detached {
             margin-inline-start: v.$gap-sm;
             border-radius: v.$radius-sm;
         }
@@ -1567,7 +1567,7 @@ image {
         // The member before a detached one closes the group's corner: there is
         // no previous-sibling selector, so this is the one place `:has()` is used
         // for it (the three detached buttons all follow the group's last member).
-        &:has(+ .detached) {
+        &:has(+ .track-detached) {
             border-start-end-radius: v.$radius-sm;
             border-end-end-radius: v.$radius-sm;
         }
@@ -1576,17 +1576,17 @@ image {
 
 // A value shown in a field's box (worn with `.sockel-input-box`), read-only, as
 // wide as its text.
-.input-value {
+.track-input-value {
     width: auto;
     user-select: text;
 }
 
-.input-group {
+.track-input-group {
     @include input-group-base;
 }
 
 @include g.on-desktop {
-    .desktop-input-group {
+    .track-desktop-input-group {
         @include input-group-base;
     }
 }
@@ -1631,25 +1631,25 @@ input-label-controls {
 
 // A list page's controls: a search field, then sort and filter chips, then
 // the pages, wrapping as the width runs out.
-.list-controls {
+.track-list-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: v.$gap-xs v.$gap-sm;
 
-    >.search-field {
+    >.track-search-field {
         flex: 1 1 240px;
     }
 
     // What the list holds, pushed right beside its pages.
-    >.list-count {
+    >.track-list-count {
         margin-inline-start: auto;
         color: v.$text-muted;
         font-size: v.$font-sm;
         white-space: nowrap;
     }
 
-    >.list-count+.sockel-pager {
+    >.track-list-count+.sockel-pager {
         margin-inline-start: 0;
     }
 
@@ -1658,7 +1658,7 @@ input-label-controls {
     }
 
     @include g.on-mobile {
-        >.search-field {
+        >.track-search-field {
             flex-basis: 100%;
         }
     }
@@ -1666,7 +1666,7 @@ input-label-controls {
 
 // A rounded text field with a leading search icon and optional trailing
 // actions, all inside the one outline.
-.search-field {
+.track-search-field {
     display: flex;
     align-items: center;
     gap: v.$padding-md;
@@ -1718,7 +1718,7 @@ input-label-controls {
     }
 }
 
-.table {
+.track-table {
     display: flex;
     flex-direction: column;
     font-size: v.$font-sm;
@@ -1737,7 +1737,7 @@ input-label-controls {
         background: v.$bg-dark-transparent;
         border-width: 1px;
 
-        &.clickable:hover {
+        &.track-clickable:hover {
             background: v.$bg-highlight;
         }
     }
@@ -1752,13 +1752,13 @@ input-label-controls {
         color: v.$text-color;
         border-radius: 0;
 
-        &.column {
+        &.track-column {
             align-items: stretch;
         }
     }
 }
 
-.image-gallery {
+.track-image-gallery {
     display: grid;
     gap: v.$gap;
     background: v.$bg-surface;
@@ -1766,30 +1766,30 @@ input-label-controls {
 
     grid-template-columns: repeat(2, 1fr);
 
-    &.poster {
+    &.track-poster {
         grid-template-columns: repeat(4, 1fr);
     }
 
-    &.banner {
+    &.track-banner {
         grid-template-columns: 1fr;
     }
 
     @include g.on-mobile {
         grid-template-columns: 1fr;
 
-        &.poster {
+        &.track-poster {
             grid-template-columns: repeat(2, 1fr);
         }
     }
 
-    .gallery-cell {
+    .track-gallery-cell {
         display: flex;
         flex-direction: column;
         gap: 0.35rem;
     }
 
     // The picture itself is the button.
-    .gallery-pick {
+    .track-gallery-pick {
         display: block;
         height: auto;
         padding: 0;
@@ -1801,27 +1801,27 @@ input-label-controls {
         }
     }
 
-    &.poster .gallery-cell image {
+    &.track-poster .track-gallery-cell image {
         aspect-ratio: 2 / 3;
     }
 
-    &.backdrop .gallery-cell image {
+    &.track-backdrop .track-gallery-cell image {
         aspect-ratio: 16 / 9;
     }
 
-    &.screenshot .gallery-cell image {
+    &.track-screenshot .track-gallery-cell image {
         aspect-ratio: 16 / 9;
     }
 
-    &.banner .gallery-cell image {
+    &.track-banner .track-gallery-cell image {
         aspect-ratio: 21 / 4;
     }
 
-    image.selected {
+    image.track-selected {
         outline: 2px solid v.$color-primary;
     }
 
-    .gallery-meta {
+    .track-gallery-meta {
         display: flex;
         align-items: center;
         gap: 0.4rem;
@@ -1839,7 +1839,7 @@ input-label-controls {
     }
 }
 
-.spin {
+.track-spin {
     animation: spin 1s linear infinite;
 }
 
@@ -1862,7 +1862,7 @@ indicator {
     // Not touch targets: keep phones at the desktop height so the icon, text
     // and source logo share a compact line.
     @include g.on-mobile {
-        .item-inline {
+        .track-item-inline {
             height: v.$input-height;
         }
     }
@@ -1878,7 +1878,7 @@ datetime {
     >span {
         white-space: nowrap;
 
-        &.special {
+        &.track-special {
             color: v.$color-primary;
         }
     }
@@ -1898,7 +1898,7 @@ date {
 
 // A transient notice at the bottom of the viewport, such as the offer to undo
 // marking something watched.
-.toast {
+.track-toast {
     position: fixed;
     left: 50%;
     bottom: v.$gap;
@@ -1920,7 +1920,7 @@ date {
 
     animation: toast-in 0.2s ease-out;
 
-    .toast-dismiss {
+    .track-toast-dismiss {
         background: transparent;
     }
 }
@@ -1934,13 +1934,13 @@ date {
 
 // The heading of a show or movie page (ui/detail_hero.rs): the title large at
 // the bottom of a faded backdrop.
-.detail-hero {
+.track-detail-hero {
     position: relative;
     min-height: 72px;
     border-radius: v.$radius;
     overflow: hidden;
 
-    &.has-backdrop {
+    &.track-has-backdrop {
         min-height: 220px;
         padding: v.$gap;
 
@@ -1950,7 +1950,7 @@ date {
     }
 }
 
-.detail-hero-image {
+.track-detail-hero-image {
     position: absolute;
     inset: 0;
     background-size: cover;
@@ -1965,11 +1965,11 @@ date {
     }
 }
 
-.detail-hero-text {
+.track-detail-hero-text {
     position: relative;
 }
 
-.detail-title {
+.track-detail-title {
     margin: 0;
     font-size: v.$font-display;
     font-weight: 600;
@@ -1982,26 +1982,26 @@ date {
     }
 }
 
-.detail-meta {
+.track-detail-meta {
     color: v.$text-muted;
 }
 
 // The source logos above a page, kept on one line next to its menu.
-.detail-sources {
+.track-detail-sources {
     flex-wrap: nowrap;
     gap: v.$gap;
 
     @include g.on-mobile {
         gap: v.$gap-xs;
 
-        .item-inline-source {
+        .track-item-inline-source {
             height: v.$input-height;
         }
     }
 }
 
 // The Media page's poster grid.
-.media-grid {
+.track-media-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: v.$gap-sm;
@@ -2011,16 +2011,16 @@ date {
     }
 }
 
-.media-card {
+.track-media-card {
     position: relative;
 
-    &.picked .media-poster {
+    &.track-picked .track-media-poster {
         outline: 3px solid v.$color-primary;
         outline-offset: -3px;
     }
 }
 
-.media-poster {
+.track-media-poster {
     display: block;
     position: relative;
 
@@ -2032,7 +2032,7 @@ date {
 // Picks a card for a bulk action from the poster's corner. Shown on hover or
 // focus, on every card once one is picked, and always without a pointer that
 // hovers.
-button.media-pick {
+button.track-media-pick {
     position: absolute;
     top: v.$gap-xs;
     left: v.$gap-xs;
@@ -2058,8 +2058,8 @@ button.media-pick {
 
     // Hovering the card is a state of the card, which CSS can only reach
     // from outside; every other case is a modifier on the button.
-    .media-card:hover>&,
-    &.picking,
+    .track-media-card:hover>&,
+    &.track-picking,
     &:focus-visible {
         opacity: 1;
     }
@@ -2068,7 +2068,7 @@ button.media-pick {
         opacity: 1;
     }
 
-    &.picked {
+    &.track-picked {
         opacity: 1;
         border-color: v.$color-primary;
         background: v.$color-primary;
@@ -2077,7 +2077,7 @@ button.media-pick {
 }
 
 // Marks a watched item in the poster's corner.
-.media-badge {
+.track-media-badge {
     position: absolute;
     top: v.$gap-xs;
     right: v.$gap-xs;
@@ -2091,25 +2091,25 @@ button.media-pick {
     --icon-color: #{v.$text-on-accent};
 
     // Watched, but regular episodes that have aired are still unwatched.
-    &.partial {
+    &.track-partial {
         background: var(--warning);
         --icon-color: var(--on-warning);
     }
 }
 
-.media-info {
+.track-media-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
     padding: 0 2px;
     min-width: 0;
 
-    >.input-group {
+    >.track-input-group {
         margin-top: v.$padding-md;
     }
 }
 
-.media-title {
+.track-media-title {
     font-weight: v.$bold-weight;
     font-size: v.$font-sm;
     line-height: 1.3;
@@ -2117,7 +2117,7 @@ button.media-pick {
     @include clamp-lines(2);
 }
 
-.media-meta {
+.track-media-meta {
     display: flex;
     align-items: center;
     gap: v.$text-gap;
@@ -2129,7 +2129,7 @@ button.media-pick {
 // timeline of fixed-height rows aligned in columns (status, kind, subject,
 // duration, time, actions) on wide screens, stacking kind and time under the
 // subject on phones.
-.queue-now {
+.track-queue-now {
     position: relative;
     overflow: hidden;
     display: flex;
@@ -2141,7 +2141,7 @@ button.media-pick {
     background: v.$bg-surface;
 
     // The running task's progress runs along the card's foot.
-    >.task-progress {
+    >.track-task-progress {
         position: absolute;
         inset: auto 0 0 0;
     }
@@ -2151,7 +2151,7 @@ button.media-pick {
     }
 }
 
-.queue-now-badge {
+.track-queue-now-badge {
     flex: none;
     display: flex;
     align-items: center;
@@ -2162,27 +2162,27 @@ button.media-pick {
     background: var(--neutral-bg);
     --icon-color: #{v.$text-muted};
 
-    &.running {
+    &.track-running {
         background: color-mix(in srgb, v.$color-primary 20%, transparent);
         --icon-color: #{v.$color-primary};
     }
 
-    &.idle {
+    &.track-idle {
         background: color-mix(in srgb, v.$color-success 18%, transparent);
         --icon-color: #{v.$color-success};
     }
 }
 
-.queue-now-caption {
+.track-queue-now-caption {
     font-size: v.$font-xs;
     color: v.$text-muted;
 
-    &.running {
+    &.track-running {
         color: v.$color-primary;
     }
 }
 
-.queue-now-title {
+.track-queue-now-title {
     display: flex;
     align-items: center;
     gap: v.$padding-md;
@@ -2190,7 +2190,7 @@ button.media-pick {
 }
 
 // What the running task is doing: its step, and its count on the right.
-.queue-now-step {
+.track-queue-now-step {
     display: flex;
     gap: v.$gap-xs;
     font-size: v.$font-xs;
@@ -2198,19 +2198,19 @@ button.media-pick {
     white-space: nowrap;
 }
 
-.queue-now-step-label {
+.track-queue-now-step-label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.queue-now-step-count {
+.track-queue-now-step-count {
     margin-left: auto;
 }
 
 // A thin bar filled to how far through its step a running task is, or
 // sweeping when the step can't know.
-.task-progress {
+.track-task-progress {
     display: block;
     height: 3px;
     background: color-mix(in srgb, v.$color-primary 20%, transparent);
@@ -2223,13 +2223,13 @@ button.media-pick {
         transition: width 0.25s linear;
     }
 
-    &.indeterminate>span {
+    &.track-indeterminate>span {
         width: 30%;
         animation: task-progress-sweep 1.4s ease-in-out infinite;
     }
 
     @media (prefers-reduced-motion: reduce) {
-        &.indeterminate>span {
+        &.track-indeterminate>span {
             width: 100%;
             opacity: 0.4;
             animation: none;
@@ -2247,7 +2247,7 @@ button.media-pick {
     }
 }
 
-.queue-filters {
+.track-queue-filters {
     // On phones the chips wrap (sockel-cluster) and the row scrolls when a
     // single chip is wider than it.
     @include g.on-mobile {
@@ -2255,7 +2255,7 @@ button.media-pick {
         scrollbar-width: none;
     }
 
-    >button.chip {
+    >button.track-chip {
         @include g.on-mobile {
             padding: 0 v.$padding-lg * 1.25;
 
@@ -2268,16 +2268,16 @@ button.media-pick {
 
 // A chip's count, quieter than its label. `.in-label`: in a sockel
 // button's label, which is a line of text, not a row with a gap.
-.chip-count {
+.track-chip-count {
     color: v.$text-muted;
     font-weight: normal;
 
-    &.in-label {
+    &.track-in-label {
         margin-inline-start: v.$text-gap;
     }
 }
 
-.task-grid {
+.track-task-grid {
     --task-row-height: #{v.$input-height + 4px};
 
     display: grid;
@@ -2295,12 +2295,12 @@ button.media-pick {
 }
 
 // A full page of rows is reserved so status changes never move the page.
-.task-timeline {
+.track-task-timeline {
     min-height: calc(var(--page-rows) * var(--task-row-height));
 }
 
 // An empty list: one muted line across the list, set apart from the filters.
-.task-empty {
+.track-task-empty {
     grid-column: 1 / -1;
     grid-row: span 2;
     align-self: center;
@@ -2308,7 +2308,7 @@ button.media-pick {
     color: v.$text-muted;
 }
 
-.task-row {
+.track-task-row {
     position: relative;
     display: grid;
     grid-column: 1 / -1;
@@ -2323,23 +2323,23 @@ button.media-pick {
         background: v.$bg-dark-transparent;
     }
 
-    &.running {
+    &.track-running {
         background: color-mix(in srgb, v.$color-primary 15%, transparent);
     }
 
-    &.focused {
+    &.track-focused {
         box-shadow: inset 0 0 0 2px v.$color-primary;
     }
 
-    &.done>.task-icon {
+    &.track-done>.track-task-icon {
         --icon-color: #{v.$color-success};
     }
 
-    &.failed>.task-icon {
+    &.track-failed>.track-task-icon {
         --icon-color: #{v.$color-danger};
     }
 
-    >.task-progress {
+    >.track-task-progress {
         position: absolute;
         inset: auto 0 0 0;
         height: 2px;
@@ -2352,55 +2352,55 @@ button.media-pick {
         grid-template-rows: auto auto;
         align-content: center;
 
-        >.task-icon {
+        >.track-task-icon {
             grid-area: icon;
         }
 
-        >.task-title {
+        >.track-task-title {
             grid-area: title;
         }
 
-        >.task-kind,
-        >.task-time {
+        >.track-task-kind,
+        >.track-task-time {
             grid-area: meta;
         }
 
-        >.task-time {
+        >.track-task-time {
             justify-self: end;
         }
 
-        >.task-duration {
+        >.track-task-duration {
             display: none;
         }
 
-        >.actions {
+        >.track-actions {
             grid-area: actions;
         }
     }
 }
 
-.task-icon {
+.track-task-icon {
     display: flex;
 }
 
-.task-kind,
-.task-duration,
-.task-time {
+.track-task-kind,
+.track-task-duration,
+.track-task-time {
     color: v.$text-muted;
     white-space: nowrap;
 }
 
-.task-duration {
+.track-task-duration {
     text-align: right;
 }
 
-.task-title {
+.track-task-title {
     display: flex;
     color: v.$text-color;
     gap: v.$text-gap;
 }
 
-.task-error {
+.track-task-error {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2408,7 +2408,7 @@ button.media-pick {
 }
 
 // Phones show the step in the status card instead; the row keeps its bar.
-.task-step {
+.track-task-step {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2420,7 +2420,7 @@ button.media-pick {
 }
 
 // The line above a list: its count on the left, paging and options on the right.
-.page-controls {
+.track-page-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -2429,13 +2429,13 @@ button.media-pick {
     font-size: v.$font-sm;
 }
 
-.page-size {
+.track-page-size {
     min-width: 3ch;
     text-align: center;
 }
 
 // Filter chips: rounded toggles, tinted while on.
-button.chip {
+button.track-chip {
     padding: 0 v.$padding-lg * 1.5;
     border-radius: v.$radius-pill;
 
@@ -2451,12 +2451,12 @@ button.chip {
     --icon-color: #{v.$text-muted};
     color: v.$text-muted;
 
-    &:hover:not(.disabled):not(:disabled) {
+    &:hover:not(.track-disabled):not(:disabled) {
         border-color: v.$border-input;
         color: v.$text-color;
     }
 
-    &.selected {
+    &.track-selected {
         background: color-mix(in srgb, v.$color-primary 18%, transparent);
         border-color: color-mix(in srgb, v.$color-primary 45%, transparent);
         --icon-color: #{v.$color-primary};
@@ -2465,7 +2465,7 @@ button.chip {
 }
 
 // A page's view tabs, underlined, with its filter chips on the same line.
-.page-tabs {
+.track-page-tabs {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -2473,7 +2473,7 @@ button.chip {
     gap: v.$gap-xs v.$gap;
     border-bottom: 1px solid v.$border-subtle;
 
-    >.chips {
+    >.track-chips {
         padding-bottom: v.$padding-md;
     }
 
@@ -2482,16 +2482,16 @@ button.chip {
         align-items: stretch;
         border-bottom: none;
 
-        >.tabs {
+        >.track-tabs {
             border-bottom: 1px solid v.$border-subtle;
         }
     }
 }
 
-.tabs {
+.track-tabs {
     display: flex;
 
-    >button.tab {
+    >button.track-tab {
         border: none;
         border-radius: 0;
         background: transparent;
@@ -2501,7 +2501,7 @@ button.chip {
         color: v.$text-muted;
         box-shadow: inset 0 -2px 0 transparent;
 
-        &:hover:not(.disabled):not(:disabled) {
+        &:hover:not(.track-disabled):not(:disabled) {
             color: v.$text-color;
         }
 
@@ -2525,13 +2525,13 @@ button.chip {
 
 // Visibility by screen width. Last in the file, so at equal specificity they
 // beat the display a component sets for itself, with no `!important`.
-.desktop-only {
+.track-desktop-only {
     @include g.on-mobile {
         display: none;
     }
 }
 
-.mobile-only {
+.track-mobile-only {
     @include g.on-desktop {
         display: none;
     }

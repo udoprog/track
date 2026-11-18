@@ -9,6 +9,7 @@ use yew::prelude::*;
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
@@ -274,8 +275,8 @@ impl Component for MovieDetail {
             MovieState::Loading => return html!(<DetailSkeleton />),
             MovieState::Missing => {
                 return html! {
-                    <div class="box info">
-                        <span class="icon exclamation-triangle" aria-hidden="true" />
+                    <div class={classes!(class::BOX, class::INFO)}>
+                        <span class={classes!(class::ICON, class::ICON_EXCLAMATION_TRIANGLE)} aria-hidden="true" />
                         <span>{"No such movie"}</span>
                     </div>
                 };
@@ -837,17 +838,17 @@ impl MovieDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="sockel-stack" data-testid="credits">
+            <section class={sockel::class::STACK} data-testid="credits">
                 <sockel::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
-                    <div class="cast-grid">
+                    <div class={class::CAST_GRID}>
                         { for shown.iter().map(cast_card) }
                     </div>
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle sockel-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon={class::ICON_USER_GROUP} label="Show all cast" title="Show all cast" class={classes!(class::CREDITS_TOGGLE, sockel::class::SELF_START)} onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {
@@ -900,45 +901,45 @@ impl MovieDetail {
             .map(|r| r.source);
 
         html! {
-            <div class="sockel-stack">
+            <div class={sockel::class::STACK}>
                 <DetailHero
                     title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
                     meta={movie.release_date.map(|ts| ts.date(self.time.clone()).year().to_string())}
                     backdrop={movie.backdrop.clone()}
                 />
 
-                <div class="toolbar">
-                    <div class="detail-sources sockel-cluster">
+                <div class={class::TOOLBAR}>
+                    <div class={classes!(class::DETAIL_SOURCES, sockel::class::CLUSTER)}>
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();
 
                             Some(html! {
-                                <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                    <span class={classes!("logo", id)} />
+                                <a class={class::ITEM_INLINE_SOURCE} href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                    <span class={classes!(class::LOGO, id)} />
                                 </a>
                             })
                         })}
                     </div>
 
-                    <div class="toolbar-toggle">
-                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
+                    <div class={class::TOOLBAR_TOGGLE}>
+                        <Button icon={if self.actions_expanded { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_BARS_3 }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
                     </div>
 
-                    <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
-                        <div class="desktop-row mobile-column desktop-input-group">
+                    <div class={classes!(class::TOOLBAR_DROPDOWN, (!self.actions_expanded).then_some(class::DESKTOP_ONLY))}>
+                        <div class={classes!(class::DESKTOP_ROW, class::MOBILE_COLUMN, class::DESKTOP_INPUT_GROUP)}>
                             <Tracked kind="movie" tracked={movie.tracked} ontoggle={link.callback(ActionMsg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
                                 <SyncButton target={SyncTarget::Movie(movie.id)} onclick={link.callback(|_| ActionMsg::SyncMovie)} text="Sync" />
                             }
 
-                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenTranslations)} />
+                            <Button icon={class::ICON_LANGUAGE} title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenTranslations)} />
 
-                            <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
+                            <Button icon={class::ICON_COG_6_TOOTH} title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
                             if self.auth.is_admin() {
-                                <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
+                                <Button node_ref={self.remove_anchor.clone()} icon={class::ICON_TRASH} variant={Variant::Danger} class={class::DETACHED} title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                                 if self.confirm_remove {
                                     <Confirm prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_confirm={link.callback(|_| ActionMsg::RemoveMovie)} on_cancel={link.callback(|_| ActionMsg::CancelRemove)} />
@@ -949,8 +950,8 @@ impl MovieDetail {
                 </div>
 
                 <indicator title="Release date">
-                    <span class="item-inline">
-                        <span class={classes!("icon", if movie.release_date.is_some() { "clock" } else { "exclamation-circle" })} />
+                    <span class={class::ITEM_INLINE}>
+                        <span class={classes!(class::ICON, if movie.release_date.is_some() { class::ICON_CLOCK } else { class::ICON_EXCLAMATION_CIRCLE })} />
                     </span>
 
                     <content>
@@ -959,12 +960,12 @@ impl MovieDetail {
                             {ts.human_date_time(self.time.clone()).lower().view()}
 
                             if let Some(source) = release_source {
-                                <span class="item-inline" title={source.as_label()}>
-                                    <span class={classes!("logo", source.as_id())} />
+                                <span class={class::ITEM_INLINE} title={source.as_label()}>
+                                    <span class={classes!(class::LOGO, source.as_id())} />
                                 </span>
                             }
                         } else {
-                            <span class="text-muted">{"No release date"}</span>
+                            <span class={class::TEXT_MUTED}>{"No release date"}</span>
                         }
                     </content>
                 </indicator>
@@ -981,9 +982,10 @@ impl MovieDetail {
         // Mark-watched only offers the release date once the movie is actually out.
         let watched_preset = release_at
             .filter(|&r| r <= self.time.now())
-            .map(|ts| TimePreset::at("calendar", "Released", ts));
+            .map(|ts| TimePreset::at(class::ICON_CALENDAR, "Released", ts));
 
-        let release_preset = release_at.map(|ts| TimePreset::at("calendar", "Released", ts));
+        let release_preset =
+            release_at.map(|ts| TimePreset::at(class::ICON_CALENDAR, "Released", ts));
 
         let on_remove_next = link.callback(move |_| WatchMsg::OnRemoveNext);
 
@@ -991,33 +993,33 @@ impl MovieDetail {
             <>
             <TranslatedText strings={movie.strings.clone()} />
 
-            <div class="detail-layout">
-                <div class="mobile-only">
+            <div class={class::DETAIL_LAYOUT}>
+                <div class={class::MOBILE_ONLY}>
                     if let Some(ref banner) = movie.banner {
-                        <Image class="banner" src={banner.clone()} />
+                        <Image class={class::BANNER} src={banner.clone()} />
                     }
                 </div>
 
-                <div class="detail-sidebar sockel-stack sockel-loose">
-                    <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
+                <div class={classes!(class::DETAIL_SIDEBAR, sockel::class::STACK, sockel::class::LOOSE)}>
+                    <Image class={classes!(class::POSTER, class::DESKTOP_ONLY, class::ARTWORK)} src={movie.poster.clone()} />
                 </div>
 
-                <div class="sockel-stack sockel-loose" data-testid="detail-content">
-                    <div class="sockel-cluster sockel-between sockel-loose">
-                        <div class="fill sockel-stack">
-                            <div class="toolbar">
+                <div class={classes!(sockel::class::STACK, sockel::class::LOOSE)} data-testid="detail-content">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
+                        <div class={classes!(class::FILL, sockel::class::STACK)}>
+                            <div class={class::TOOLBAR}>
                                 <indicator title="Release date">
                                     if movie.pending.is_some() {
-                                        <span class="item-inline" title="Next movie">
-                                            <span class="icon primary exclamation-circle" aria-hidden="true" />
+                                        <span class={class::ITEM_INLINE} title="Next movie">
+                                            <span class={classes!(class::ICON, class::PRIMARY, class::ICON_EXCLAMATION_CIRCLE)} aria-hidden="true" />
                                         </span>
                                     } else if !self.watched.is_empty() {
-                                        <span class="item-inline" title="Watched">
-                                            <span class="icon primary check-circle" aria-hidden="true" />
+                                        <span class={class::ITEM_INLINE} title="Watched">
+                                            <span class={classes!(class::ICON, class::PRIMARY, class::ICON_CHECK_CIRCLE)} aria-hidden="true" />
                                         </span>
                                     } else {
-                                        <span class="item-inline" title="Never watched">
-                                            <span class="icon secondary x-circle" aria-hidden="true" />
+                                        <span class={class::ITEM_INLINE} title="Never watched">
+                                            <span class={classes!(class::ICON, class::SECONDARY, class::ICON_X_CIRCLE)} aria-hidden="true" />
                                         </span>
                                     }
 
@@ -1045,29 +1047,29 @@ impl MovieDetail {
                                     </content>
                                 </indicator>
 
-                                <div class="toolbar-toggle">
-                                    <Button icon={if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" }} title="Watch actions" onclick={link.callback(move |_| UiMsg::ToggleDetailedActionsExpanded)} />
+                                <div class={class::TOOLBAR_TOGGLE}>
+                                    <Button icon={if self.detailed_expand { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_BARS_3 }} title="Watch actions" onclick={link.callback(move |_| UiMsg::ToggleDetailedActionsExpanded)} />
                                 </div>
 
-                                <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(WatchMsg::MarkWatched)} text="Mark watched" />
+                                <div class={classes!(class::TOOLBAR_DROPDOWN, class::DESKTOP_INPUT_GROUP, (!self.detailed_expand).then_some(class::DESKTOP_ONLY))}>
+                                    <MarkTimeMenu quick=true variant="primary" icon={class::ICON_CHECK} title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(WatchMsg::MarkWatched)} text="Mark watched" />
 
                                     if movie.pending.is_some() {
-                                        <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" pressed={Some(true)} onclick={on_remove_next} />
+                                        <Button icon={class::ICON_BOOKMARK} variant={Variant::Primary} title="Next movie" text="Next movie" pressed={Some(true)} onclick={on_remove_next} />
                                     } else {
-                                        <MarkTimeMenu trigger_icon="bookmark-slash" text="Not next movie" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(WatchMsg::OnWatchNext)} />
+                                        <MarkTimeMenu trigger_icon={class::ICON_BOOKMARK_SLASH} text="Not next movie" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(WatchMsg::OnWatchNext)} />
                                     }
 
-                                    <Button icon="clock" title="Watch history" text="Watch history" onclick={link.callback(|_| UiMsg::ToggleOpenWatched)} />
+                                    <Button icon={class::ICON_CLOCK} title="Watch history" text="Watch history" onclick={link.callback(|_| UiMsg::ToggleOpenWatched)} />
 
-                                    <Button icon="calendar" title="Releases" text="Releases" onclick={link.callback(|_| UiMsg::ToggleOpenReleases)} />
+                                    <Button icon={class::ICON_CALENDAR} title="Releases" text="Releases" onclick={link.callback(|_| UiMsg::ToggleOpenReleases)} />
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     if self.open_watched {
-                        <Modal icon="clock" title="Watch history" on_close={link.callback(|_| UiMsg::ToggleOpenWatched)}>
+                        <Modal icon={class::ICON_CLOCK} title="Watch history" on_close={link.callback(|_| UiMsg::ToggleOpenWatched)}>
                             {self.view_watched(ctx, movie.id)}
                         </Modal>
                     }
@@ -1128,18 +1130,18 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <div class="watch-history">
+            <div class={class::WATCH_HISTORY}>
                 { for self.watched.iter().map(|w| {
                     let wid = w.watched.id;
                     let kind = api::WatchedKind::Movie { movie: movie_id };
 
                     html! {
-                        <div class="watch-row">
-                            <span class="watch-when sockel-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
-                            <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
+                        <div class={class::WATCH_ROW}>
+                            <span class={classes!(class::WATCH_WHEN, sockel::class::NUMERIC)}>{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                            <span class={class::WATCH_AGE}>{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                            <div class="actions start-on-mobile sockel-cluster sockel-nowrap sockel-tight sockel-end">
-                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
+                            <div class={classes!(class::ACTIONS, class::START_ON_MOBILE, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT, sockel::class::END)}>
+                            <Button node_ref={w.remove_watch_anchor.clone()} icon={class::ICON_TRASH} label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
                                 <Confirm prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))} on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)} />

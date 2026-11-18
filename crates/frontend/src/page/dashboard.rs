@@ -1,6 +1,7 @@
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::Error;
 use crate::help;
 use crate::router::{DashboardQuery, DashboardView, MediaSelection, Route, Router};
@@ -88,29 +89,29 @@ impl Component for Dashboard {
         let tab = |v: DashboardView, icon: &'static str, label: &'static str| {
             let onclick = link.callback(move |_| Msg::SetView(v));
             html! {
-                <Button {icon} {label} title={label} class="tab" current={view == v} {onclick} />
+                <Button {icon} {label} title={label} class={class::TAB} current={view == v} {onclick} />
             }
         };
 
         html! {
             <>
-                <h1 class="sockel-visually-hidden">{"Dashboard"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Dashboard"}</h1>
 
-                <div class="page-tabs">
-                    <nav class="tabs" aria-label="Dashboard views">
-                        { tab(DashboardView::WatchNext, "forward", "What's Next") }
-                        { tab(DashboardView::Upcoming, "calendar-days", "Upcoming") }
-                        { tab(DashboardView::Schedule, "calendar", "Schedule") }
-                        { tab(DashboardView::History, "clock", "History") }
+                <div class={class::PAGE_TABS}>
+                    <nav class={class::TABS} aria-label="Dashboard views">
+                        { tab(DashboardView::WatchNext, class::ICON_FORWARD, "What's Next") }
+                        { tab(DashboardView::Upcoming, class::ICON_CALENDAR_DAYS, "Upcoming") }
+                        { tab(DashboardView::Schedule, class::ICON_CALENDAR, "Schedule") }
+                        { tab(DashboardView::History, class::ICON_CLOCK, "History") }
                     </nav>
 
-                    <div class="chips sockel-cluster">
+                    <div class={classes!(class::CHIPS, sockel::class::CLUSTER)}>
                         <MediaKindToggle selection={selection} on_change={link.callback(Msg::SetSelection)} />
                         <Help section={help::WATCHING} />
                     </div>
                 </div>
 
-                <div class="sockel-stack">
+                <div class={sockel::class::STACK}>
                     { match view {
                         DashboardView::WatchNext => html! {
                             <WatchNext

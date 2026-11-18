@@ -2,6 +2,7 @@ use auth::yew023::AccountPanel;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 
 /// The signed-in user's own account.
 #[function_component]
@@ -10,9 +11,9 @@ pub(crate) fn Account() -> Html {
 
     html! {
         <>
-            <h1 class="sockel-visually-hidden">{"Account"}</h1>
+            <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Account"}</h1>
 
-            <div class="settings">
+            <div class={class::SETTINGS}>
                 <AccountPanel />
             </div>
         </>

@@ -4,6 +4,7 @@
 use api::TimeInfo;
 use yew::prelude::*;
 
+use crate::class;
 use crate::router::{Route, ShowDetailQuery};
 use crate::ui::{Button, Image, Link};
 
@@ -29,14 +30,14 @@ pub(super) struct RangeControls<'a> {
 /// The line above a schedule view: the span shown, then paging and options.
 pub(super) fn view_range_controls(c: RangeControls<'_>) -> Html {
     html! {
-        <div class="page-controls">
-            <span class="text-muted">{c.label}</span>
+        <div class={class::PAGE_CONTROLS}>
+            <span class={class::TEXT_MUTED}>{c.label}</span>
 
-            <div class="sockel-cluster sockel-nowrap sockel-loose">
-                <Button icon="chevron-left" title={c.prev_title.to_string()} onclick={c.on_prev} />
-                <Button icon="calendar" label={c.reset_label.to_string()} title={c.reset_title.to_string()} class="chip" disabled={c.reset_disabled} onclick={c.on_reset} />
-                <Button icon="chevron-right" title={c.next_title.to_string()} onclick={c.on_next} />
-                <Button node_ref={c.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", c.options_open.then_some("selected"))} expanded={Some(c.options_open)} haspopup="dialog" onclick={c.on_options} />
+            <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                <Button icon={class::ICON_CHEVRON_LEFT} title={c.prev_title.to_string()} onclick={c.on_prev} />
+                <Button icon={class::ICON_CALENDAR} label={c.reset_label.to_string()} title={c.reset_title.to_string()} class={class::CHIP} disabled={c.reset_disabled} onclick={c.on_reset} />
+                <Button icon={class::ICON_CHEVRON_RIGHT} title={c.next_title.to_string()} onclick={c.on_next} />
+                <Button node_ref={c.options_anchor.clone()} icon={class::ICON_ADJUSTMENTS_HORIZONTAL} title="View options" class={classes!(class::CHIP, c.options_open.then_some(class::SELECTED))} expanded={Some(c.options_open)} haspopup="dialog" onclick={c.on_options} />
             </div>
         </div>
     }
@@ -52,13 +53,13 @@ pub(super) fn view_stepper(
     on_more: Callback<MouseEvent>,
 ) -> Html {
     html! {
-        <div class="field">
+        <div class={class::FIELD}>
             <label>{label.to_string()}</label>
 
-            <div class="sockel-cluster sockel-nowrap sockel-loose">
-                <Button icon="minus" title={fewer_title.to_string()} onclick={on_fewer} disabled={count <= 1} />
-                <span class="page-size sockel-numeric">{count}</span>
-                <Button icon="plus" title={more_title.to_string()} onclick={on_more} />
+            <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
+                <Button icon={class::ICON_MINUS} title={fewer_title.to_string()} onclick={on_fewer} disabled={count <= 1} />
+                <span class={classes!(class::PAGE_SIZE, sockel::class::NUMERIC)}>{count}</span>
+                <Button icon={class::ICON_PLUS} title={more_title.to_string()} onclick={on_more} />
             </div>
         </div>
     }
@@ -84,12 +85,12 @@ pub(super) fn view_day_heading(day: api::Date, today: api::Date) -> Html {
     );
 
     html! {
-        <h3 class={"agenda-day-title"}>
+        <h3 class={class::AGENDA_DAY_TITLE}>
             if let Some(relative) = relative {
-                <span class={(day == today).then_some("accent")}>{relative}</span>
-                <span class="text-muted">{date}</span>
+                <span class={(day == today).then_some(class::ACCENT)}>{relative}</span>
+                <span class={class::TEXT_MUTED}>{date}</span>
             } else {
-                <span class={(day == today).then_some("accent")}>{date}</span>
+                <span class={(day == today).then_some(class::ACCENT)}>{date}</span>
             }
         </h3>
     }
@@ -150,29 +151,29 @@ pub(super) fn view_schedule_item(
                     let to = Route::ShowDetail(show_id, ShowDetailQuery { season: code.season, episode: Some(code), orphaned: false });
 
                     html! {
-                        <Link key={code.to_string()} {to} class={classes!("schedule-time", sockel::class::NUMERIC, compact.then_some("compact"))} title={format!("Open {code}")}>
+                        <Link key={code.to_string()} {to} class={classes!(class::SCHEDULE_TIME, sockel::class::NUMERIC, compact.then_some(class::COMPACT))} title={format!("Open {code}")}>
                             <span>{ep.aired.time_of_day(time.clone())}</span>
-                            <span class="badge">{code.to_string()}</span>
+                            <span class={class::BADGE}>{code.to_string()}</span>
                         </Link>
                     }
                 }) }
             }
         }
         api::ScheduleItem::Movie(movie) => html! {
-            <span class={classes!("schedule-time", sockel::class::NUMERIC, compact.then_some("compact"))}>
+            <span class={classes!(class::SCHEDULE_TIME, sockel::class::NUMERIC, compact.then_some(class::COMPACT))}>
                 <span>{movie.released.time_of_day(time.clone())}</span>
-                <span class="badge">{"Movie"}</span>
+                <span class={class::BADGE}>{"Movie"}</span>
             </span>
         },
     };
 
     html! {
-        <div {key} class={classes!("schedule-item", compact.then_some("compact"))} {onmouseover}>
-            <Link to={route.clone()} class={classes!("schedule-poster", compact.then_some("compact"))} decorative=true>
+        <div {key} class={classes!(class::SCHEDULE_ITEM, compact.then_some(class::COMPACT))} {onmouseover}>
+            <Link to={route.clone()} class={classes!(class::SCHEDULE_POSTER, compact.then_some(class::COMPACT))} decorative=true>
                 <Image src={poster.clone()} />
             </Link>
-            <Link to={route} class={classes!("schedule-title", compact.then_some("compact"))} title={format!("Open {title}")}><>{title}</></Link>
-            <span class={classes!("schedule-times", compact.then_some("compact"))}>{times}</span>
+            <Link to={route} class={classes!(class::SCHEDULE_TITLE, compact.then_some(class::COMPACT))} title={format!("Open {title}")}><>{title}</></Link>
+            <span class={classes!(class::SCHEDULE_TIMES, compact.then_some(class::COMPACT))}>{times}</span>
         </div>
     }
 }

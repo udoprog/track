@@ -12,7 +12,7 @@ $numbering-head: 26px;
 // from its height, leaving the rest to the map's episodes.
 $numbering-map-chrome: 120px;
 
-.sockel-dialog.numbering-modal {
+.sockel-dialog.track-numbering-modal {
     // Anchored at the top on wide screens (5vh down, less the layer's own
     // padding) and at full height as a phone's sheet, so the map growing as
     // runs unfold leaves its rows in place.
@@ -28,39 +28,39 @@ $numbering-map-chrome: 120px;
     }
 
     // A colour per range, cycling.
-    .tone-0 {
+    .track-tone-0 {
         --tone: var(--accent-selected);
     }
 
-    .tone-1 {
+    .track-tone-1 {
         --tone: color-mix(in srgb, var(--accent-selected) 45%, #8a4fd0);
     }
 
-    .tone-2 {
+    .track-tone-2 {
         --tone: color-mix(in srgb, var(--accent-selected) 45%, #2f9b8f);
     }
 
-    .tone-3 {
+    .track-tone-3 {
         --tone: color-mix(in srgb, var(--accent-selected) 45%, #b5793a);
     }
 
-    .tone-4 {
+    .track-tone-4 {
         --tone: color-mix(in srgb, var(--accent-selected) 45%, #c4476e);
     }
 
-    .tone-5 {
+    .track-tone-5 {
         --tone: color-mix(in srgb, var(--accent-selected) 45%, #6f9a2a);
     }
 }
 
-.numbering-mode {
+.track-numbering-mode {
     display: flex;
     gap: v.$padding;
 }
 
 // Phones read the status first, then the map, then the ranges; wide screens
 // put the map beside the other two.
-.numbering-layout {
+.track-numbering-layout {
     display: grid;
     grid-template-areas: 'status' 'map' 'side';
     gap: v.$gap-xs v.$gap;
@@ -72,15 +72,15 @@ $numbering-map-chrome: 120px;
         grid-template-rows: auto 1fr;
     }
 
-    >.numbering-status {
+    >.track-numbering-status {
         grid-area: status;
     }
 
-    >.numbering-map-pane {
+    >.track-numbering-map-pane {
         grid-area: map;
     }
 
-    >.numbering-side {
+    >.track-numbering-side {
         grid-area: side;
     }
 }
@@ -88,7 +88,7 @@ $numbering-map-chrome: 120px;
 // The map stays in view while the ranges scroll the modal: beside them on wide
 // screens, above them on phones. A negative top lets it cover the modal
 // content's padding, so nothing shows above it.
-.numbering-map-pane {
+.track-numbering-map-pane {
     position: sticky;
     top: calc(-1 * #{v.$gap});
     z-index: 1;
@@ -97,21 +97,21 @@ $numbering-map-chrome: 120px;
 
 // A column of episodes per numbering with bands between them; the editor
 // sets the tracks, a column and a gap per numbering but the last.
-.numbering-map-head,
-.numbering-map {
+.track-numbering-map-head,
+.track-numbering-map {
     --numbering-col: minmax(40px, 72px);
     --numbering-gap: minmax(14px, 1fr);
     display: grid;
 }
 
-.numbering-map-head {
+.track-numbering-map-head {
     align-items: center;
     padding-inline: v.$padding;
     font-size: v.$font-xs;
 }
 
 // A numbering's logo, named by its title.
-.numbering-map-source {
+.track-numbering-map-source {
     display: flex;
     align-items: center;
     gap: v.$padding;
@@ -122,14 +122,14 @@ $numbering-map-chrome: 120px;
         grid-column: span 2;
     }
 
-    >.logo {
+    >.track-logo {
         flex-shrink: 0;
         height: 16px;
     }
 }
 
 // The season at the top of the map in a column, picked to jump to another.
-.numbering-map-source>.numbering-map-in-view {
+.track-numbering-map-source>.track-numbering-map-in-view {
     height: 22px;
     min-width: 0;
     max-width: 100%;
@@ -141,7 +141,7 @@ $numbering-map-chrome: 120px;
     font-size: v.$font-xs;
 }
 
-.numbering-map-scroll {
+.track-numbering-map-scroll {
     max-height: calc(90vh - #{$numbering-map-chrome});
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -154,25 +154,25 @@ $numbering-map-chrome: 120px;
     }
 }
 
-.numbering-column {
+.track-numbering-column {
     display: flex;
     flex-direction: column;
     min-width: 0;
 }
 
-.numbering-map-season {
+.track-numbering-map-season {
     height: $numbering-head;
     font-size: v.$font-xs;
     font-weight: v.$bold-weight;
     line-height: $numbering-head;
 }
 
-.numbering-bands {
+.track-numbering-bands {
     display: block;
     width: 100%;
 }
 
-.numbering-band {
+.track-numbering-band {
     fill: var(--tone);
     fill-opacity: 0.35;
     stroke: transparent;
@@ -180,22 +180,22 @@ $numbering-map-chrome: 120px;
     cursor: pointer;
 
     // Shown without being editable.
-    &.static {
+    &.track-static {
         cursor: default;
     }
 
     &:hover,
-    &.selected {
+    &.track-selected {
         fill-opacity: 0.65;
         stroke: v.$text-primary;
     }
 
-    &.missing {
+    &.track-missing {
         stroke: var(--warning);
         stroke-dasharray: 4 3;
     }
 
-    &.invalid {
+    &.track-invalid {
         fill: var(--danger);
         stroke: var(--danger);
         stroke-dasharray: 4 3;
@@ -204,19 +204,19 @@ $numbering-map-chrome: 120px;
 
 // The episode after an open range's last, which the band fades over (the
 // numbering-fade mask).
-.numbering-band.open-end {
+.track-numbering-band.track-open-end {
     fill-opacity: 0.55;
 }
 
 // Holds the map's masks without taking up room.
-.numbering-defs {
+.track-numbering-defs {
     position: absolute;
     width: 0;
     height: 0;
 }
 
 // An episode in the map; the inner span is its box.
-.numbering-ep {
+.track-numbering-ep {
     display: block;
     width: 100%;
     height: $numbering-row;
@@ -245,22 +245,22 @@ $numbering-map-chrome: 120px;
     }
 
     // A show's episode no range covers, and a target episode no range reaches.
-    &.unmapped>span,
-    &.untargeted>span {
+    &.track-unmapped>span,
+    &.track-untargeted>span {
         background: repeating-linear-gradient(-45deg, transparent 0 4px, var(--border-soft) 4px 6px);
         border-color: v.$border-input;
         border-style: dashed;
         color: v.$text-muted;
     }
 
-    &.untargeted>span {
+    &.track-untargeted>span {
         background: transparent;
         border-style: solid;
         border-color: v.$border-subtle;
     }
 
     // Drawn only because a range reaches past what the source knows.
-    &.future>span {
+    &.track-future>span {
         background: transparent;
         border-style: dashed;
         border-color: v.$border-subtle;
@@ -268,7 +268,7 @@ $numbering-map-chrome: 120px;
     }
 
     // Where an open range runs on: its colour fading out downwards.
-    &.open-end>span {
+    &.track-open-end>span {
         background: linear-gradient(var(--tone), transparent);
         border-style: dashed;
         border-color: var(--tone);
@@ -276,25 +276,25 @@ $numbering-map-chrome: 120px;
         color: v.$text-primary;
     }
 
-    &.missing>span {
+    &.track-missing>span {
         background: color-mix(in srgb, var(--warning) 18%, transparent);
         border-style: dashed;
         border-color: var(--warning);
         color: var(--warning);
     }
 
-    &.overlap>span,
-    &.invalid>span {
+    &.track-overlap>span,
+    &.track-invalid>span {
         background: var(--danger-bg);
         border-color: var(--danger);
         color: var(--danger);
     }
 
-    &.selected>span {
+    &.track-selected>span {
         border-color: v.$text-primary;
     }
 
-    &.anchor>span {
+    &.track-anchor>span {
         outline: 2px solid v.$color-primary;
         outline-offset: -1px;
     }
@@ -311,7 +311,7 @@ $numbering-map-chrome: 120px;
 
 // A run of alike episodes folded into one row, drawn as a stack of them. Its
 // count wraps out of sight when the column is too narrow for it.
-.numbering-ep.numbering-fold-row {
+.track-numbering-ep.track-numbering-fold-row {
     padding-bottom: 3px;
 
     >span {
@@ -328,18 +328,18 @@ $numbering-map-chrome: 120px;
     }
 }
 
-.numbering-fold-count {
+.track-numbering-fold-count {
     opacity: 0.8;
 }
 
-.numbering-map-foot {
+.track-numbering-map-foot {
     display: flex;
     flex-wrap: wrap;
     gap: v.$gap-xs v.$padding-lg;
     font-size: v.$font-xs;
 }
 
-.numbering-status {
+.track-numbering-status {
     display: flex;
     flex-direction: column;
     gap: v.$padding-md;
@@ -348,26 +348,26 @@ $numbering-map-chrome: 120px;
         margin: 0;
     }
 
-    .numbering-details>.numbering-missing {
+    .track-numbering-details>.track-numbering-missing {
         font-size: v.$font-xs;
     }
 }
 
 // The status's warnings and unmapped episodes, unfolded under its summary.
-.numbering-details {
+.track-numbering-details {
     display: flex;
     flex-direction: column;
     gap: v.$padding-md;
 }
 
-.numbering-note {
+.track-numbering-note {
     display: flex;
     gap: v.$padding-md;
     align-items: center;
     color: v.$color-primary;
     font-size: v.$font-sm;
 
-    >.icon {
+    >.track-icon {
         --icon-color: #{v.$color-primary};
         flex-shrink: 0;
         height: v.$icon-size-sm;
@@ -377,49 +377,49 @@ $numbering-map-chrome: 120px;
 // One grid for every range, so their numbers line up: a swatch, TMDB's season,
 // first and last episode, the arrows, the numbering's logo, its season, first
 // and last episode, then the remove button.
-.numbering-ranges {
+.track-numbering-ranges {
     display: grid;
     grid-template-columns: repeat(9, auto) 1fr auto;
     column-gap: v.$padding-md;
     row-gap: v.$padding-md;
 }
 
-.numbering-range,
-.numbering-fold {
+.track-numbering-range,
+.track-numbering-fold {
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: subgrid;
     row-gap: v.$padding-md;
 }
 
-.numbering-range>*,
-.numbering-fold>* {
+.track-numbering-range>*,
+.track-numbering-fold>* {
     grid-column: 1 / -1;
 }
 
-.numbering-range {
+.track-numbering-range {
     padding: v.$padding-md v.$padding-lg;
     background: v.$bg-panel;
     border: 1px solid transparent;
     border-radius: v.$radius;
 
-    &.selected {
+    &.track-selected {
         border-color: v.$border-input;
     }
 
-    &.invalid {
+    &.track-invalid {
         border-color: v.$color-danger;
     }
 }
 
-.numbering-range-head {
+.track-numbering-range-head {
     display: grid;
     grid-template-columns: subgrid;
     align-items: center;
 }
 
 // Under its head to outrank the centring of icon buttons.
-.numbering-range-head>.numbering-range-summary {
+.track-numbering-range-head>.track-numbering-range-summary {
     grid-column: 1 / -2;
     display: grid;
     grid-template-columns: subgrid;
@@ -435,16 +435,16 @@ $numbering-map-chrome: 120px;
     text-align: start;
     cursor: pointer;
 
-    >.logo {
+    >.track-logo {
         height: 16px;
     }
 
-    >.icon {
+    >.track-icon {
         height: v.$icon-size-sm;
     }
 }
 
-.numbering-span {
+.track-numbering-span {
     display: contents;
 
     >span {
@@ -453,30 +453,30 @@ $numbering-map-chrome: 120px;
     }
 }
 
-.numbering-season,
-.numbering-first {
+.track-numbering-season,
+.track-numbering-first {
     justify-self: end;
 }
 
 // The dash joins the first episode across the column gap.
-.numbering-last {
+.track-numbering-last {
     margin-inline-start: calc(-1 * #{v.$padding-md});
 }
 
-.numbering-incomplete {
+.track-numbering-incomplete {
     grid-column: 2 / -1;
     font-size: v.$font-sm;
 }
 
 // A run of ranges that map whole seasons alike, folded into one row; its
 // ranges hang under it when unfolded.
-.numbering-fold.open {
+.track-numbering-fold.track-open {
     padding-inline-start: v.$padding-md;
     border-inline-start: 2px solid v.$border-input;
 }
 
 // Under its fold to outrank the centring of buttons.
-.numbering-fold>.numbering-fold-summary {
+.track-numbering-fold>.track-numbering-fold-summary {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -492,13 +492,13 @@ $numbering-map-chrome: 120px;
     text-align: start;
     cursor: pointer;
 
-    >.icon {
+    >.track-icon {
         flex-shrink: 0;
         height: v.$icon-size-sm;
     }
 }
 
-.numbering-swatch {
+.track-numbering-swatch {
     flex-shrink: 0;
     width: 10px;
     height: 10px;
@@ -506,45 +506,45 @@ $numbering-map-chrome: 120px;
     background: var(--tone);
 }
 
-.numbering-number {
+.track-numbering-number {
     width: 3.5em;
     text-align: end;
 }
 
-.numbering-source,
-.numbering-target {
+.track-numbering-source,
+.track-numbering-target {
     display: flex;
     align-items: center;
     gap: v.$padding-md;
 }
 
-.numbering-source {
+.track-numbering-source {
     flex-wrap: wrap;
 }
 
-.numbering-source .logo {
+.track-numbering-source .track-logo {
     height: v.$input-height-sm;
 }
 
-.numbering-letter {
+.track-numbering-letter {
     color: v.$text-muted;
     font-size: v.$font-xs;
 }
 
-.numbering-errors {
+.track-numbering-errors {
     display: flex;
     flex-direction: column;
     color: v.$color-danger;
     font-size: v.$font-sm;
 }
 
-.numbering-missing {
+.track-numbering-missing {
     color: var(--warning);
     font-size: v.$font-sm;
 }
 
 // Which numbering a suggestion follows, when they disagree.
-.numbering-basis {
+.track-numbering-basis {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -552,7 +552,7 @@ $numbering-map-chrome: 120px;
 }
 
 // Under its group to outrank the centring of buttons.
-.numbering-basis>.numbering-basis-option {
+.track-numbering-basis>.track-numbering-basis-option {
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: v.$padding-md;
@@ -560,24 +560,24 @@ $numbering-map-chrome: 120px;
     padding-block: v.$padding-md;
     text-align: start;
 
-    >.logo {
+    >.track-logo {
         height: 16px;
     }
 
-    >.numbering-basis-name {
+    >.track-numbering-basis-name {
         font-weight: v.$bold-weight;
     }
 
-    >.text-muted {
+    >.track-text-muted {
         font-size: v.$font-xs;
     }
 }
 
-.numbering-basis-cancel {
+.track-numbering-basis-cancel {
     align-self: flex-start;
 }
 
-.numbering-warning {
+.track-numbering-warning {
     flex-basis: 100%;
     display: flex;
     gap: v.$padding-md;
@@ -585,14 +585,14 @@ $numbering-map-chrome: 120px;
     color: var(--warning);
     font-size: v.$font-xs;
 
-    >.icon {
+    >.track-icon {
         --icon-color: var(--warning);
         flex-shrink: 0;
         height: v.$icon-size-sm;
     }
 }
 
-.link-button {
+.track-link-button {
     display: inline;
     padding: 0;
     border: 0;
@@ -609,20 +609,20 @@ $numbering-map-chrome: 120px;
 }
 
 // A name's source, after the name.
-.alt-name-origin.logo {
+.track-alt-name-origin.track-logo {
     height: 16px;
     margin-inline-start: v.$padding-md;
     vertical-align: text-bottom;
 }
 
 // The Other names modal's intro line, with its help mark beside the text.
-.names-intro {
+.track-names-intro {
     display: flex;
     align-items: center;
 }
 
 // A season of another numbering in the Other names modal.
-.names-target {
+.track-names-target {
     display: flex;
     align-items: center;
     gap: v.$padding-md;
@@ -631,19 +631,19 @@ $numbering-map-chrome: 120px;
     font-size: v.$font-sm;
     font-weight: normal;
 
-    >.logo {
+    >.track-logo {
         height: 16px;
     }
 }
 
 // An episode's codes in other numberings.
-.episode-numberings {
+.track-episode-numberings {
     display: flex;
     flex-wrap: wrap;
     gap: v.$padding;
 }
 
-.numbering-chip {
+.track-numbering-chip {
     display: inline-flex;
     align-items: center;
     gap: v.$padding;
@@ -654,7 +654,7 @@ $numbering-map-chrome: 120px;
     font-size: v.$font-xs;
     font-weight: v.$bold-weight;
 
-    >.logo {
+    >.track-logo {
         height: 16px;
 
         &::before {
@@ -665,7 +665,7 @@ $numbering-map-chrome: 120px;
 
 // Where an episode list moves on to another season of the numbering it is
 // linked to.
-.numbering-divider {
+.track-numbering-divider {
     display: flex;
     align-items: center;
     gap: v.$gap-xs;
@@ -680,11 +680,11 @@ $numbering-map-chrome: 120px;
         border-top: 1px dashed v.$border-input;
     }
 
-    >.logo {
+    >.track-logo {
         height: 16px;
     }
 
-    >.numbering-divider-season {
+    >.track-numbering-divider-season {
         font-weight: v.$bold-weight;
     }
 }

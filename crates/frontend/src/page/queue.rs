@@ -6,6 +6,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
 use sockel::Skeleton;
@@ -180,14 +181,14 @@ impl Component for Queue {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
-                <h1 class="sockel-visually-hidden">{"Queue"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Queue"}</h1>
 
                 { self.view_now(ctx) }
 
                 if self.loaded {
                     { self.view_timeline(ctx) }
                 } else {
-                    <div class="sockel-stack">
+                    <div class={sockel::class::STACK}>
                         { for (0..3).map(|_| html! { <Skeleton /> }) }
                     </div>
                 }
@@ -436,43 +437,48 @@ impl Queue {
 
         let (state, icon, caption, entry) = if let Some((entry, since, _)) = running {
             (
-                "running",
-                "arrow-path spin",
+                class::RUNNING,
+                classes!(class::ICON_ARROW_PATH, class::SPIN),
                 running_label(since, self.now),
                 Some(entry),
             )
         } else if let Some((entry, run_at)) = next {
             (
                 "waiting",
-                "clock",
+                classes!(class::ICON_CLOCK),
                 format!("Up next {}", eta_label(run_at, self.now)),
                 Some(entry),
             )
         } else {
-            ("idle", "check", String::from("Idle"), None)
+            (
+                class::IDLE,
+                classes!(class::ICON_CHECK),
+                String::from("Idle"),
+                None,
+            )
         };
 
         html! {
-            <div class={classes!("queue-now", state)} data-test="queue-now">
-                <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
+            <div class={classes!(class::QUEUE_NOW, state)} data-test="queue-now">
+                <span class={classes!(class::QUEUE_NOW_BADGE, state)}><span class={classes!(class::ICON, icon)} aria-hidden="true" /></span>
 
-                <div class="grow sockel-stack sockel-snug">
-                    <span class={classes!("queue-now-caption", state)}>{caption}</span>
+                <div class={classes!(class::GROW, sockel::class::STACK, sockel::class::SNUG)}>
+                    <span class={classes!(class::QUEUE_NOW_CAPTION, state)}>{caption}</span>
 
                     if let Some(entry) = entry {
-                        <span class="queue-now-title sockel-truncate">
-                            <span class="badge">{kind_label(&entry.kind)}</span>
+                        <span class={classes!(class::QUEUE_NOW_TITLE, sockel::class::TRUNCATE)}>
+                            <span class={class::BADGE}>{kind_label(&entry.kind)}</span>
                             { view_task_title(&entry.kind, task_route(&entry.kind), None, None) }
                         </span>
                     } else {
-                        <span class="queue-now-title sockel-truncate">{"All caught up"}</span>
+                        <span class={classes!(class::QUEUE_NOW_TITLE, sockel::class::TRUNCATE)}>{"All caught up"}</span>
                     }
 
                     if let Some(progress) = progress {
-                        <span class="queue-now-step">
-                            <span class="queue-now-step-label">{step_label(progress)}</span>
+                        <span class={class::QUEUE_NOW_STEP}>
+                            <span class={class::QUEUE_NOW_STEP_LABEL}>{step_label(progress)}</span>
                             if let Some(count) = count_label(progress) {
-                                <span class="queue-now-step-count sockel-numeric">{count}</span>
+                                <span class={classes!(class::QUEUE_NOW_STEP_COUNT, sockel::class::NUMERIC)}>{count}</span>
                             }
                         </span>
                     }
@@ -483,7 +489,7 @@ impl Queue {
                 }
 
                 if self.auth.is_admin() {
-                    <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
+                    <Button icon={class::ICON_ARROW_PATH} label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
                 }
             </div>
         }
@@ -536,8 +542,8 @@ impl Queue {
             });
 
             html! {
-                <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!("chip", (filter == f).then_some("selected"))} pressed={Some(filter == f)} {onclick}>
-                    <span class="chip-count in-label sockel-numeric">{self.count(f)}</span>
+                <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!(class::CHIP, (filter == f).then_some(class::SELECTED))} pressed={Some(filter == f)} {onclick}>
+                    <span class={classes!(class::CHIP_COUNT, class::IN_LABEL, sockel::class::NUMERIC)}>{self.count(f)}</span>
                 </Button>
             }
         };
@@ -559,18 +565,18 @@ impl Queue {
         });
 
         html! {
-            <div class="sockel-stack">
-                <div class="queue-controls sockel-cluster sockel-between sockel-loose">
-                    <div class="chips queue-filters sockel-cluster">
-                        { chip(QueueFilter::All, "queue-list", "All") }
-                        { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
-                        { chip(QueueFilter::Done, "check", "Done") }
-                        { chip(QueueFilter::Failed, "x-mark", "Failed") }
+            <div class={sockel::class::STACK}>
+                <div class={classes!("queue-controls", sockel::class::CLUSTER, sockel::class::BETWEEN, sockel::class::LOOSE)}>
+                    <div class={classes!(class::CHIPS, class::QUEUE_FILTERS, sockel::class::CLUSTER)}>
+                        { chip(QueueFilter::All, class::ICON_QUEUE_LIST, "All") }
+                        { chip(QueueFilter::Upcoming, class::ICON_CLOCK, "Upcoming") }
+                        { chip(QueueFilter::Done, class::ICON_CHECK, "Done") }
+                        { chip(QueueFilter::Failed, class::ICON_X_MARK, "Failed") }
                     </div>
 
-                    <div class="sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         if !following {
-                            <Button icon="arrow-down-circle" label="Follow" title="Follow the running task" onclick={on_follow} />
+                            <Button icon={class::ICON_ARROW_DOWN_CIRCLE} label="Follow" title="Follow the running task" onclick={on_follow} />
                         }
 
                         if total_pages > 1 {
@@ -579,9 +585,9 @@ impl Queue {
                     </div>
                 </div>
 
-                <div class="task-grid task-timeline" style={format!("--page-rows: {PAGE_SIZE}")}>
+                <div class={classes!(class::TASK_GRID, class::TASK_TIMELINE)} style={format!("--page-rows: {PAGE_SIZE}")}>
                     if entries.is_empty() {
-                        <p class="task-empty">
+                        <p class={class::TASK_EMPTY}>
                             {match filter {
                                 QueueFilter::All => "Nothing has been synced yet.",
                                 QueueFilter::Upcoming => "Nothing is waiting to sync.",
@@ -603,29 +609,29 @@ impl Queue {
 
         let (state, icon, duration, time) = match &entry.state {
             State::Pending { run_at } => (
-                "pending",
-                classes!("icon", "clock"),
+                class::PENDING,
+                classes!(class::ICON, class::ICON_CLOCK),
                 None,
                 eta_label(*run_at, self.now),
             ),
             State::Running { since, .. } => (
-                "running",
-                classes!("icon", "arrow-path", "spin"),
+                class::RUNNING,
+                classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN),
                 since.and_then(|since| elapsed_label(since, self.now)),
                 String::from("now"),
             ),
             State::Done(task) => (
                 if task.error.is_some() {
-                    "failed"
+                    class::FAILED
                 } else {
-                    "done"
+                    class::DONE
                 },
                 classes!(
-                    "icon",
+                    class::ICON,
                     if task.error.is_some() {
-                        "x-mark"
+                        class::ICON_X_MARK
                     } else {
-                        "check"
+                        class::ICON_CHECK
                     }
                 ),
                 Some(duration_label(task.duration.millis())),
@@ -644,19 +650,19 @@ impl Queue {
         };
 
         html! {
-            <div key={id.get()} class={classes!("task-row", state, (ctx.props().task == Some(id)).then_some("focused"))} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
-                <span class="task-icon"><span class={icon} /></span>
+            <div key={id.get()} class={classes!(class::TASK_ROW, state, (ctx.props().task == Some(id)).then_some(class::FOCUSED))} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
+                <span class={class::TASK_ICON}><span class={icon} /></span>
 
                 { view_task_cells(&entry.kind, route, error, progress) }
 
-                <span class="task-duration sockel-numeric">{duration}</span>
-                <span class="task-time">{time}</span>
+                <span class={classes!(class::TASK_DURATION, sockel::class::NUMERIC)}>{duration}</span>
+                <span class={class::TASK_TIME}>{time}</span>
 
-                <span class="actions sockel-cluster sockel-nowrap sockel-tight sockel-end">
+                <span class={classes!(class::ACTIONS, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::TIGHT, sockel::class::END)}>
                     if entry.is_pending() && self.auth.is_admin() {
-                        <div class="input-group">
-                            <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
-                            <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
+                        <div class={class::INPUT_GROUP}>
+                            <Button icon={class::ICON_FORWARD} title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
+                            <Button icon={class::ICON_TRASH} variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
                         </div>
                     }
                 </span>
@@ -711,7 +717,7 @@ fn view_task_cells(
 ) -> Html {
     html! {
         <>
-            <span class="task-kind">{kind_label(kind)}</span>
+            <span class={class::TASK_KIND}>{kind_label(kind)}</span>
             { view_task_title(kind, route, error, progress) }
         </>
     }
@@ -761,14 +767,14 @@ fn view_progress_bar(progress: &api::TaskProgress) -> Html {
             let step = format!("{:?}{:?}", progress.step, progress.source);
 
             html! {
-                <span class="task-progress" role="progressbar" aria-label={label}
+                <span class={class::TASK_PROGRESS} role="progressbar" aria-label={label}
                     aria-valuemin="0" aria-valuemax={total.to_string()} aria-valuenow={done.to_string()}>
                     <span key={step} style={width} />
                 </span>
             }
         }
         None => html! {
-            <span class="task-progress indeterminate" role="progressbar" aria-label={label}>
+            <span class={classes!(class::TASK_PROGRESS, class::INDETERMINATE)} role="progressbar" aria-label={label}>
                 <span />
             </span>
         },
@@ -785,23 +791,23 @@ fn view_task_title(
     let body = html! {
         <>
                 if let api::TaskKind::RefreshTopLanguages = kind {
-                    <span class="text-muted">{"Top languages"}</span>
+                    <span class={class::TEXT_MUTED}>{"Top languages"}</span>
                 } else if let Some(title) = kind.title() {
                     <span>{title}</span>
                 } else {
-                    <span class="text-muted">{"Untitled"}</span>
+                    <span class={class::TEXT_MUTED}>{"Untitled"}</span>
                 }
 
                 if let Some(code) = task_code(kind) {
-                    <span class="text-muted">{code}</span>
+                    <span class={class::TEXT_MUTED}>{code}</span>
                 }
 
                 if let Some(error) = error {
-                    <span class="task-error">{error}</span>
+                    <span class={class::TASK_ERROR}>{error}</span>
                 }
 
                 if let Some(progress) = progress {
-                    <span class="task-step">
+                    <span class={class::TASK_STEP}>
                         {step_label(progress)}
                         if let Some(count) = count_label(progress) {
                             {" "}{count}
@@ -813,9 +819,9 @@ fn view_task_title(
 
     html! {
         if let Some(to) = route {
-            <Link {to} class="task-title sockel-truncate">{body}</Link>
+            <Link {to} class={classes!(class::TASK_TITLE, sockel::class::TRUNCATE)}>{body}</Link>
         } else {
-            <span class="task-title sockel-truncate">{body}</span>
+            <span class={classes!(class::TASK_TITLE, sockel::class::TRUNCATE)}>{body}</span>
         }
     }
 }

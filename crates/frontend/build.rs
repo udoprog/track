@@ -2,9 +2,8 @@ fn main() {
     sockel_build::Config::new()
         .local("style/")
         .prefix("track-")
-        // Track's classes are not prefixed yet (416edee6 renames them), so
-        // every local class is let through for now.
-        .foreign(["*"])
+        // watchword's sign-in and account forms (the auth rules in _index.scss).
+        .foreign(["auth-*"])
         // The Cargo features less the ones they pull in for markup track never
         // renders (Dialog and Confirm footers, Reorder's rows, badges, media,
         // tooltips), so their partials stay out of the CSS.

@@ -3,6 +3,12 @@
 mod active_tasks;
 mod app;
 mod background;
+// Unused constants are fine: the dead-class guard (tests/style_classes.rs)
+// checks the classes, and the help pages name icons at runtime.
+#[allow(dead_code)]
+mod class {
+    include!(concat!(env!("OUT_DIR"), "/classes.rs"));
+}
 mod error;
 mod flags;
 mod help;

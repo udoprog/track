@@ -5,6 +5,7 @@ use sockel::Skeleton;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
 use crate::router::{Route, SettingsPage};
@@ -199,24 +200,24 @@ impl Component for Settings {
 
         html! {
             <>
-                <h1 class="sockel-visually-hidden">{"Settings"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Settings"}</h1>
 
-                <div class={classes!("settings-layout", admin.then_some("has-nav"))}>
+                <div class={classes!(class::SETTINGS_LAYOUT, admin.then_some(class::HAS_NAV))}>
                 if admin {
-                    <nav class={classes!("settings-nav", (!index).then_some("desktop-only"))} aria-label="Settings pages">
+                    <nav class={classes!(class::SETTINGS_NAV, (!index).then_some(class::DESKTOP_ONLY))} aria-label="Settings pages">
                         { for SettingsPage::ALL.into_iter().map(|page| html! {
-                            <Link to={Route::Settings(Some(page))} title={page.title()} class={classes!("settings-nav-item", (page == current).then_some("active"))} current={page == current}>
+                            <Link to={Route::Settings(Some(page))} title={page.title()} class={classes!(class::SETTINGS_NAV_ITEM, (page == current).then_some(class::ACTIVE))} current={page == current}>
                                 <span>{ page.title() }</span>
                             </Link>
                         }) }
 
-                        <Link to={Route::Users} title="Users" class="settings-nav-item"><span>{"Users"}</span></Link>
+                        <Link to={Route::Users} title="Users" class={class::SETTINGS_NAV_ITEM}><span>{"Users"}</span></Link>
                     </nav>
                 }
 
-                <div class={classes!("settings", index.then_some("desktop-only"))}>
+                <div class={classes!(class::SETTINGS, index.then_some(class::DESKTOP_ONLY))}>
                     if admin {
-                        <Link to={Route::Settings(None)} title="All settings" class="settings-back"><span>{"All settings"}</span></Link>
+                        <Link to={Route::Settings(None)} title="All settings" class={class::SETTINGS_BACK}><span>{"All settings"}</span></Link>
                     }
 
                     if current == SettingsPage::Preferences {
@@ -236,7 +237,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Time zone" hint="Leave empty to use the browser's time zone.">
                                 { mine("", html! {
-                                    <input class={classes!(sockel::class::INPUT, "fill")} type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
+                                    <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
                                 }) }
 
                                 <datalist id="tz-datalist">
@@ -246,7 +247,7 @@ impl Component for Settings {
                                 </datalist>
 
                                 if !tz_valid {
-                                    <span class="field-error" role="alert">{"Unknown time zone"}</span>
+                                    <span class={class::FIELD_ERROR} role="alert">{"Unknown time zone"}</span>
                                 }
                             </FormRow>
 
@@ -254,7 +255,7 @@ impl Component for Settings {
                                 { mine("", html! {
                                     <input
                                         type="number"
-                                        class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC)}
+                                        class={classes!(sockel::class::INPUT, class::INPUT_NUMBER, sockel::class::NUMERIC)}
                                         title="Up next per page"
                                         min="1"
                                         max="100"
@@ -266,7 +267,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Up next look-ahead" hint="How far ahead What's Next shows episodes that have not aired yet.">
                                 { mine("", html! {
-                                    <div class="input-group">
+                                    <div class={class::INPUT_GROUP}>
                                         <DurationInput
                                             value={self.preferences.dashboard_lookahead}
                                             on_change={link.callback(Msg::DashboardLookaheadChanged)}
@@ -307,7 +308,7 @@ impl Component for Settings {
                             <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="Page title">
                                     { system("", html! {
-                                        <input class={classes!(sockel::class::INPUT, "fill")} type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                                        <input class={classes!(sockel::class::INPUT, class::FILL)} type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
                                     }) }
                                 </FormRow>
                             </div>
@@ -327,10 +328,10 @@ impl Component for Settings {
 
                                 <FormRow stack=true label="Sync every">
                                     { system("", html! {
-                                        <div class="input-group">
+                                        <div class={class::INPUT_GROUP}>
                                             <input
                                                 type="number"
-                                                class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC)}
+                                                class={classes!(sockel::class::INPUT, class::INPUT_NUMBER, sockel::class::NUMERIC)}
                                                 title="Sync every"
                                                 min="1"
                                                 max="168"
@@ -338,13 +339,13 @@ impl Component for Settings {
                                                 onchange={on_auto_sync_interval}
                                             />
 
-                                            <span class="input-label has-text">{"hours"}</span>
+                                            <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>{"hours"}</span>
                                         </div>
                                     }) }
                                 </FormRow>
 
                                 <FormRow stack=true label="Sync languages" hint="Translations to fetch; titles can be searched and filtered in these languages. Default also fetches each language users view a show or movie in.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <SyncLanguagesEditor
                                             languages={self.config.sync_languages.clone()}
                                             on_change={link.callback(Msg::SyncLanguagesChanged)}
@@ -361,7 +362,7 @@ impl Component for Settings {
 
                             <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <SyncKindsEditor
                                             kinds={self.config.sync_kinds.clone()}
                                             on_change={link.callback(Msg::SyncKindsChanged)}
@@ -370,7 +371,7 @@ impl Component for Settings {
                                 </FormRow>
 
                                 <FormRow stack=true label="Find XEM through" help={help::NUMBERINGS} hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <XemLookupEditor
                                             sources={self.config.xem_lookup.clone()}
                                             on_change={link.callback(Msg::XemLookupChanged)}
@@ -379,7 +380,7 @@ impl Component for Settings {
                                 </FormRow>
 
                                 <FormRow stack=true label="Other numberings" help={help::NUMBERINGS} hint="Shown on each episode in this order. A numbering that matches the episode's own code is left out, so episodes that line up show nothing extra.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <NumberingsEditor
                                             prefs={self.config.numberings.clone()}
                                             on_change={link.callback(Msg::NumberingsChanged)}
@@ -388,7 +389,7 @@ impl Component for Settings {
                                 </FormRow>
 
                                 <FormRow stack=true label="Release dates" hint="Which release dates count. A date matching any rule is considered, in the rules' order.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <FiltersEditor
                                             rules={self.config.release_filters.clone()}
                                             on_change={link.callback(Msg::ReleaseFiltersChanged)}
@@ -399,7 +400,7 @@ impl Component for Settings {
                                 </FormRow>
 
                                 <FormRow stack=true label="Air dates" hint="Which air dates count. A date matching any rule is considered, in the rules' order.">
-                                    { system("tall", html! {
+                                    { system(class::TALL, html! {
                                         <FiltersEditor
                                             rules={self.config.air_date_filters.clone()}
                                             on_change={link.callback(Msg::AirDateFiltersChanged)}

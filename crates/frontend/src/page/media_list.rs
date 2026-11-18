@@ -9,6 +9,7 @@ use web_sys::HtmlImageElement;
 use yew::prelude::*;
 
 use crate::background::Background;
+use crate::class;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, NextFilter, Route, Router, ShowDetailQuery, SortField,
@@ -275,51 +276,51 @@ impl Component for MediaList {
         };
 
         let dir_icon = if self.desc {
-            "bars-arrow-down"
+            class::ICON_BARS_ARROW_DOWN
         } else {
-            "bars-arrow-up"
+            class::ICON_BARS_ARROW_UP
         };
         let dir_title = if self.desc { "Descending" } else { "Ascending" };
 
         let (tracked_icon, tracked_label) = match self.tracked {
-            TrackedFilter::All => ("funnel", "All"),
-            TrackedFilter::Tracked => ("eye", "Tracked"),
-            TrackedFilter::Untracked => ("eye-slash", "Untracked"),
+            TrackedFilter::All => (class::ICON_FUNNEL, "All"),
+            TrackedFilter::Tracked => (class::ICON_EYE, "Tracked"),
+            TrackedFilter::Untracked => (class::ICON_EYE_SLASH, "Untracked"),
         };
 
         let (next_icon, next_scope) = match self.next {
-            NextFilter::All => ("forward", "any"),
-            NextFilter::Regular => ("forward", "regular"),
-            NextFilter::Specials => ("sparkles", "specials"),
+            NextFilter::All => (class::ICON_FORWARD, "any"),
+            NextFilter::Regular => (class::ICON_FORWARD, "regular"),
+            NextFilter::Specials => (class::ICON_SPARKLES, "specials"),
         };
 
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="sockel-visually-hidden">{"Media"}</h1>
+                <h1 class={sockel::class::VISUALLY_HIDDEN}>{"Media"}</h1>
 
-                <div class="list-controls">
-                    <div class="search-field">
-                        <span class="icon magnifying-glass" aria-hidden="true" />
+                <div class={class::LIST_CONTROLS}>
+                    <div class={class::SEARCH_FIELD}>
+                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
                         <input type="text" placeholder="Filter" aria-label="Filter media" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="x-mark" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon={class::ICON_X_MARK} title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
-                    <div class="chips sockel-cluster">
+                    <div class={classes!(class::CHIPS, sockel::class::CLUSTER)}>
                         <SortMenu
                             options={SORTS}
                             current={sort_value}
                             on_change={on_sort}
                         />
 
-                        <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
+                        <Button icon={dir_icon} title={dir_title} class={class::CHIP} onclick={link.callback(|_| Msg::ToggleDir)} />
 
-                        <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!("chip", (self.tracked != TrackedFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleTracked)} />
+                        <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!(class::CHIP, (self.tracked != TrackedFilter::All).then_some(class::SELECTED))} onclick={link.callback(|_| Msg::CycleTracked)} />
 
-                        <Button icon={next_icon} title={format!("Next episode: {next_scope}")} label={format!("Next: {next_scope}")} class={classes!("chip", (self.next != NextFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleNext)} />
+                        <Button icon={next_icon} title={format!("Next episode: {next_scope}")} label={format!("Next: {next_scope}")} class={classes!(class::CHIP, (self.next != NextFilter::All).then_some(class::SELECTED))} onclick={link.callback(|_| Msg::CycleNext)} />
 
                         <MediaKindToggle
                             selection={self.selection}
@@ -327,25 +328,25 @@ impl Component for MediaList {
                         />
                     </div>
 
-                    <span class="list-count sockel-numeric">{format!("{total} titles")}</span>
+                    <span class={classes!(class::LIST_COUNT, sockel::class::NUMERIC)}>{format!("{total} titles")}</span>
 
                     <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
 
                 if self.list_req.is_pending() {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}><span class={classes!(class::ICON, class::ICON_ARROW_PATH, class::SPIN)} aria-hidden="true" /></span>
                     </div>
                 } else if items.len() == 0 {
-                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
-                        <span class="item-inline-more">{"Nothing to show."}</span>
+                    <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
+                        <span class={class::ITEM_INLINE_MORE}>{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="media-grid">
+                    <div class={class::MEDIA_GRID}>
                         { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
-                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
+                    <div class={classes!(class::DESKTOP_ALIGN_END, sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE)}>
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
 
@@ -355,12 +356,12 @@ impl Component for MediaList {
                 }
 
                 // Always present, so screen readers announce what appears in it.
-                <div class="toast-region" role="status">
+                <div class={class::TOAST_REGION} role="status">
                     if let Some(report) = &self.report {
-                        <div class="toast">
-                            <span class="icon success check-circle" aria-hidden="true" />
-                            <span class="fill">{report}</span>
-                            <Button icon="x-mark" class="toast-dismiss" title="Dismiss" onclick={link.callback(|_| Msg::DismissReport)} />
+                        <div class={class::TOAST}>
+                            <span class={classes!(class::ICON, class::SUCCESS, class::ICON_CHECK_CIRCLE)} aria-hidden="true" />
+                            <span class={class::FILL}>{report}</span>
+                            <Button icon={class::ICON_X_MARK} class={class::TOAST_DISMISS} title="Dismiss" onclick={link.callback(|_| Msg::DismissReport)} />
                         </div>
                     }
                 </div>
@@ -917,7 +918,7 @@ impl MediaList {
         let regular = scope == api::EpisodeScope::Regular;
 
         let released = TimePreset::when_aired(
-            "calendar",
+            class::ICON_CALENDAR,
             "Released",
             if movies == 1 {
                 "When the movie was released"
@@ -927,32 +928,32 @@ impl MediaList {
         );
 
         html! {
-            <div class="selection-bar" role="region" aria-label="Selected media">
-                <span class="selection-count sockel-numeric">{picked_label(shows, movies)}</span>
+            <div class={class::SELECTION_BAR} role="region" aria-label="Selected media">
+                <span class={classes!(class::SELECTION_COUNT, sockel::class::NUMERIC)}>{picked_label(shows, movies)}</span>
 
-                <div class="sockel-cluster sockel-tight">
+                <div class={classes!(sockel::class::CLUSTER, sockel::class::TIGHT)}>
                     if shows > 0 {
-                        <div class="chips sockel-cluster" role="group" aria-label="Mark the next episode from">
-                            <Button class={classes!("chip", regular.then_some("selected"))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />
-                            <Button class={classes!("chip", (!regular).then_some("selected"))} label="Specials" title="From the specials" pressed={Some(!regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Specials))} />
+                        <div class={classes!(class::CHIPS, sockel::class::CLUSTER)} role="group" aria-label="Mark the next episode from">
+                            <Button class={classes!(class::CHIP, regular.then_some(class::SELECTED))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />
+                            <Button class={classes!(class::CHIP, (!regular).then_some(class::SELECTED))} label="Specials" title="From the specials" pressed={Some(!regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Specials))} />
                         </div>
 
-                        <MarkTimeMenu variant="primary" icon="forward" label="Mark next" title="Mark the next episode of the selected shows watched" prompt="When did you watch them?" on_confirm={link.callback(Msg::BulkMarkNext)} />
+                        <MarkTimeMenu variant="primary" icon={class::ICON_FORWARD} label="Mark next" title="Mark the next episode of the selected shows watched" prompt="When did you watch them?" on_confirm={link.callback(Msg::BulkMarkNext)} />
                     }
 
                     if movies > 0 {
-                        <MarkTimeMenu variant="primary" icon="check" label="Mark watched" title="Mark the selected movies watched" prompt="When did you watch them?" preset={released} on_confirm={link.callback(Msg::BulkMarkMovies)} />
+                        <MarkTimeMenu variant="primary" icon={class::ICON_CHECK} label="Mark watched" title="Mark the selected movies watched" prompt="When did you watch them?" preset={released} on_confirm={link.callback(Msg::BulkMarkMovies)} />
                     }
 
                     if untracked {
-                        <Button icon="eye" label="Track" title="Track the selected items" onclick={link.callback(|_| Msg::BulkTrack(true))} />
+                        <Button icon={class::ICON_EYE} label="Track" title="Track the selected items" onclick={link.callback(|_| Msg::BulkTrack(true))} />
                     }
 
                     if tracked {
-                        <Button icon="eye-slash" label="Untrack" title="Stop tracking the selected items" onclick={link.callback(|_| Msg::BulkTrack(false))} />
+                        <Button icon={class::ICON_EYE_SLASH} label="Untrack" title="Stop tracking the selected items" onclick={link.callback(|_| Msg::BulkTrack(false))} />
                     }
 
-                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| Msg::ClearPicked)} />
+                    <Button icon={class::ICON_X_MARK} label="Clear" title="Clear the selection" onclick={link.callback(|_| Msg::ClearPicked)} />
                 </div>
             </div>
         }
@@ -988,7 +989,7 @@ impl MediaList {
 
         let preset = m
             .date
-            .map(|timestamp| TimePreset::at("calendar", "Released", timestamp));
+            .map(|timestamp| TimePreset::at(class::ICON_CALENDAR, "Released", timestamp));
 
         let title = primary_title.unwrap_or("Untitled Media");
         let now = self.time.now();
@@ -1000,37 +1001,37 @@ impl MediaList {
             .callback(move |e: MouseEvent| Msg::TogglePick(key, e.shift_key()));
 
         html! {
-            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", "sockel-stack", "sockel-tight", picked.then_some("picked"))} {onmouseover}>
-                <Button class={classes!("media-pick", picked.then_some("picked"), (!self.picked.is_empty()).then_some("picking"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
-                    <span class="icon sm check" aria-hidden="true" />
+            <div key={format!("{kind:?}-{id}")} class={classes!(class::MEDIA_CARD, class::LIFT, sockel::class::STACK, sockel::class::TIGHT, picked.then_some(class::PICKED))} {onmouseover}>
+                <Button class={classes!(class::MEDIA_PICK, picked.then_some(class::PICKED), (!self.picked.is_empty()).then_some(class::PICKING))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
+                    <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} aria-hidden="true" />
                 </Button>
 
-                <Link to={route.clone()} class="media-poster artwork" decorative=true>
-                    <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
+                <Link to={route.clone()} class={classes!(class::MEDIA_POSTER, class::ARTWORK)} decorative=true>
+                    <Image class={class::POSTER} placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
                     if m.last_watched_at.is_some() {
                         if m.unwatched_episodes > 0 {
-                            <span class="media-badge partial" title={unwatched_label(m.unwatched_episodes)}>
-                                <span class="icon sm check" aria-hidden="true" />
+                            <span class={classes!(class::MEDIA_BADGE, class::PARTIAL)} title={unwatched_label(m.unwatched_episodes)}>
+                                <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} aria-hidden="true" />
                             </span>
                         } else {
-                            <span class="media-badge" title="Watched">
-                                <span class="icon sm check" aria-hidden="true" />
+                            <span class={class::MEDIA_BADGE} title="Watched">
+                                <span class={classes!(class::ICON, class::SM, class::ICON_CHECK)} aria-hidden="true" />
                             </span>
                         }
                     }
                 </Link>
 
-                <div class="media-info">
-                    <Link to={route} class="media-title" title={title.to_owned()}><>{title}</></Link>
+                <div class={class::MEDIA_INFO}>
+                    <Link to={route} class={class::MEDIA_TITLE} title={title.to_owned()}><>{title}</></Link>
 
                     if let Some(alt) = matched_alt {
-                        <span class="media-meta sockel-truncate" title={alt.to_owned()}>{format!("Alt: {alt}")}</span>
+                        <span class={classes!(class::MEDIA_META, sockel::class::TRUNCATE)} title={alt.to_owned()}>{format!("Alt: {alt}")}</span>
                     }
 
-                    <span class="media-meta sockel-truncate">
+                    <span class={classes!(class::MEDIA_META, sockel::class::TRUNCATE)}>
                         if is_movie {
-                            <span class="icon sm film" title="Movie" />
+                            <span class={classes!(class::ICON, class::SM, class::ICON_FILM)} title="Movie" />
                         }
 
                         if let Some(ts) = m.date {
@@ -1040,7 +1041,7 @@ impl MediaList {
                         }
                     </span>
 
-                    <span class="media-meta sockel-truncate">
+                    <span class={classes!(class::MEDIA_META, sockel::class::TRUNCATE)}>
                         if let Some(ts) = m.last_watched_at {
                             <span title={ts.human_date(self.time.clone()).to_string()}>{format!("Watched {}", ts.relative_to(now))}</span>
                         } else {
@@ -1049,13 +1050,13 @@ impl MediaList {
                     </span>
 
                     if is_movie || !m.tracked {
-                        <div class="input-group">
+                        <div class={class::INPUT_GROUP}>
                             if is_movie {
-                                <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
+                                <MarkTimeMenu quick=true variant="primary" icon={class::ICON_CHECK} title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
                             }
 
                             if !m.tracked {
-                                <Button icon="eye-slash" label="Track" title="Track" onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))} />
+                                <Button icon={class::ICON_EYE_SLASH} label="Track" title="Track" onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))} />
                             }
                         </div>
                     }

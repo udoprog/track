@@ -2,13 +2,13 @@
 @use 'input' as i;
 @use 'vars' as v;
 
-.toolbar {
+.track-toolbar {
     display: grid;
     // The first column shrinks, so the actions never push past the edge.
     grid-template-columns: minmax(0, 1fr) auto;
     gap: v.$gap;
 
-    &.toolbar-padding {
+    &.track-toolbar-padding {
         padding: v.$gap;
     }
 }
@@ -32,7 +32,7 @@
     border-bottom: 1px solid v.$border-subtle-transparent;
 }
 
-.toolbar-dropdown {
+.track-toolbar-dropdown {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -56,7 +56,7 @@
     }
 }
 
-.toolbar-toggle {
+.track-toolbar-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -75,7 +75,7 @@
     }
 }
 
-.toolbar-item {
+.track-toolbar-item {
     display: flex;
     align-items: center;
     gap: v.$text-gap;
@@ -93,22 +93,22 @@
     border-radius: v.$radius;
     border: none;
 
-    &.has-text {
+    &.track-has-text {
         @include i.has-text-padding;
     }
 
     @include g.on-mobile {
-        &.mobile-has-text {
+        &.track-mobile-has-text {
             @include i.has-text-padding;
         }
 
-        &:not(.sockel-button, .mobile-has-text, .has-text) {
+        &:not(.sockel-button, .track-mobile-has-text, .track-has-text) {
             justify-content: center;
         }
     }
 
     @include g.on-desktop {
-        &:not(.sockel-button, .has-text) {
+        &:not(.sockel-button, .track-has-text) {
             justify-content: center;
         }
     }
@@ -117,7 +117,7 @@
         background: v.$bg-dark;
     }
 
-    &.active {
+    &.track-active {
         background: v.$bg-highlight;
         color: v.$color-primary;
     }
@@ -128,7 +128,7 @@
         height: v.$input-height + v.$padding;
         gap: v.$padding-md;
 
-        &.has-text {
+        &.track-has-text {
             padding: 0 v.$gap-sm;
         }
     }
