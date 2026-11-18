@@ -1,164 +1,7 @@
-// sockel's tokens, then the rules of the parts of sockel the app uses, in
-// sockel's own order (style/_index.scss), so the app's own rules refine them.
+// The app's own rules, after sockel's (compiled first by build.rs, with the
+// settings there), so they refine them.
+@use 'sockel' as p;
 @use 'vars' as v;
-// The app's small text, controls, phone breakpoint, buttons (filled, no
-// edge, touch height on phones), dialogs (centred) and popovers (rounder,
-// wider padded, a sheet's top edge alone), where sockel's differ.
-@use 'pkg:sockel/features' as sockel-features;
-@use 'pkg:sockel/tokens' as sockel-tokens with (
-    // Leaves out the parts of sockel's features track does not enable.
-    $features: sockel-features.$features,
-    $text-sm: v.$font-sm,
-    $control-height: v.$input-height,
-    $control-height-small: v.$input-height-sm,
-    $breakpoints: ("phone": v.$mobile-limit),
-    $button-text: v.$font-sm,
-    $button-text-small: v.$font-xs,
-    $button-padding: v.$padding-lg,
-    $button-padding-small: v.$padding-lg,
-    $button-content-gap: v.$text-gap,
-    $button-icon-offset: -(v.$text-gap),
-    $button-phone-height: v.$input-height-touch,
-    $radius-lg: v.$radius-lg,
-    $glyph-size: v.$icon-size,
-    $glyph-phone-size: v.$icon-size-touch,
-    $button-disabled-cursor: default,
-    $dialog-width: 600px,
-    $dialog-width-wide: v.$modal-width-lg,
-    $dialog-min-height: 0,
-    $dialog-height-tall: 90vh,
-    $dialog-sheet-height: 90vh,
-    $dialog-centred: true,
-    $dialog-max-height: 85vh,
-    $dialog-padding: v.$gap,
-    $dialog-body-padding: v.$gap,
-    $dialog-body-gap: v.$gap,
-    $dialog-title-size: v.$font-lg,
-    $dialog-scroll-gutter: auto,
-    $dialog-sheet-edge: top,
-    $popover-padding: v.$gap,
-    $popover-radius: v.$radius-lg,
-    $popover-sheet-edge: top,
-    $popover-scroll-gutter: auto,
-    $popover-sheet-height: 85vh,
-    $popover-max-width: 100vw,
-    $menu-width: 0px,
-    $menu-radius: v.$radius-lg,
-    $menu-padding: v.$gap-xs,
-    $menu-text: v.$font-sm,
-    $menu-item-padding: 0 v.$padding-lg 0 calc(#{v.$padding-lg} - #{v.$text-gap}),
-    $menu-scroll-gutter: auto,
-    $menu-item-gap: v.$text-gap,
-    $menu-item-radius: v.$radius,
-    $menu-item-hover-fill: color-mix(in srgb, v.$text-primary 8%, transparent),
-    $menu-item-phone-height: v.$input-height-touch,
-    $menu-item-mark-ink: currentColor,
-    $confirm-gap: v.$gap,
-    // Edged and square, a line as high as a small control, a block a touch
-    // control high on phones.
-    // Pill page buttons in muted ink, the current page filled.
-    $pager-gap: 2px,
-    $pager-button-radius: v.$radius-pill,
-    $pager-button-ink: v.$text-muted,
-    $pager-button-text: v.$font-sm,
-    $pager-button-hover-fill: var(--neutral-bg),
-    $pager-button-hover-ink: v.$text-color,
-    $pager-current-fill: var(--accent-selected),
-    $pager-current-ink: v.$text-color-selected,
-    $pager-step-ink: v.$text-color,
-    $pager-phone-height: v.$input-height-touch,
-    // Drag handles as high as a control, a touch target on phones.
-    $drag-handle-size: v.$input-height,
-    $drag-handle-phone-size: v.$input-height-touch,
-    $drag-handle-radius: v.$radius-sm,
-    $drag-handle-hover-fill: color-mix(in srgb, v.$text-primary 8%, transparent),
-    $skeleton-fill: v.$bg-dark-transparent,
-    $skeleton-edge: v.$border-subtle-transparent,
-    $skeleton-radius: 0,
-    $skeleton-line-height: v.$input-height-sm,
-    $skeleton-line-inset: 0,
-    $skeleton-phone-height: v.$input-height-touch,
-    // A raised card: the surface, a soft danger edge and a deep shadow, the
-    // message in medium weight over its causes, a line each, nothing under
-    // them.
-    $error-box-padding: v.$gap-sm v.$gap-sm v.$gap-sm v.$gap,
-    $error-box-gap: v.$gap-sm,
-    $error-box-fill: v.$bg-surface,
-    $error-box-edge: color-mix(in srgb, v.$color-danger 45%, transparent),
-    $error-box-shadow: 0 8px 32px v.$shadow-strong,
-    $error-box-message-weight: v.$bold-weight,
-    $error-box-cause-font: inherit,
-    $error-box-cause-text: v.$font-sm,
-    $error-box-text-end: 0,
-    // Text fields: the edge strengthens on hover and turns accent while
-    // focused, the ring over it; small text, a touch target high on phones.
-    $input-hover-edge: var(--field-border-hover),
-    $input-focus-edge: v.$color-primary,
-    $input-ring-offset: -1px,
-    $input-padding-inline: v.$padding-lg + 2px,
-    $input-text: v.$font-sm,
-    $input-phone-height: v.$input-height-touch,
-    // Settings' label column; hints in the text's own line height.
-    $field-label-width: 200px,
-    $field-message-line: normal,
-    // Defined by the theme (_theme.scss).
-    $danger: false,
-    $success: false,
-    $warning: false,
-    $on-accent: false,
-    $scrim: false,
-    $field-bg: false,
-    $field-border: false,
-    $card-border-width: false,
-    // The parts of sockel's enabled features track never renders.
-    $omit: (
-        "buttons.bare", "buttons.busy", "buttons.fold", "buttons.touch",
-        "confirm.inline",
-        "fields.busy", "fields.check", "fields.disabled", "fields.error", "fields.field",
-        "fields.fieldset", "fields.help", "fields.required",
-        "heads.crumbs", "heads.label", "heads.list", "heads.trail",
-        "inputs.busy", "inputs.disabled", "inputs.group", "inputs.invalid", "inputs.mark",
-        "inputs.small", "inputs.textarea", "inputs.touch",
-        "layout.card-compact", "layout.card-dense", "layout.card-link", "layout.flush",
-        "layout.gap-hair", "layout.gap-medium", "layout.gap-none", "layout.gap-wide",
-        "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
-        "menu.context", "menu.current", "menu.danger", "menu.detail", "menu.disabled", "menu.heading",
-        "menu.note",
-        "menu.row-actions", "menu.separator", "menu.split-button", "menu.tight", "menu.widths",
-        "notices.empty-state", "notices.notice",
-        "pager.edges", "pager.states", "pager.summary",
-        "popover.match-anchor",
-        "skeleton.group", "skeleton.row", "skeleton.short", "skeleton.spinner",
-        "tokens.actions", "tokens.media", "tokens.tooltip",
-        "utilities.clamp", "utilities.focus-ring", "utilities.phone-only",
-        "utilities.scroll-area",
-    ),
-    $button-colours: (
-        secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
-        // Switches (ui::Button with `checked`): a field's ground and edge.
-        ghost: (fill: v.$bg-surface, ink: var(--text), edge: v.$border-input, hover-edge: var(--accent)),
-        // sockel's close buttons: filled, their icon muted.
-        quiet: (fill: var(--neutral-bg), ink: var(--text-muted), edge: transparent),
-        primary: (fill: var(--accent-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
-        success: (fill: var(--success-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
-        danger: (fill: var(--danger-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
-    )
-);
-@use 'pkg:sockel/layout' as sockel-layout;
-@use 'pkg:sockel/heads' as sockel-heads;
-@use 'pkg:sockel/buttons' as sockel-buttons;
-@use 'pkg:sockel/fields' as sockel-fields;
-@use 'pkg:sockel/icons' as sockel-icons;
-@use 'pkg:sockel/inputs' as sockel-inputs;
-@use 'pkg:sockel/notices' as sockel-notices;
-@use 'pkg:sockel/skeleton' as sockel-skeleton;
-@use 'pkg:sockel/popover' as sockel-popover;
-@use 'pkg:sockel/pager' as sockel-pager;
-@use 'pkg:sockel/reorder' as sockel-reorder;
-@use 'pkg:sockel/confirm' as sockel-confirm;
-@use 'pkg:sockel/dialog' as sockel-dialog;
-@use 'pkg:sockel/menu' as sockel-menu;
-@use 'pkg:sockel/utilities' as sockel-utilities;
 @use 'theme';
 @use 'icons';
 @use 'logos';
@@ -870,11 +713,12 @@ h1.auth-heading {
 }
 
 .auth-input {
-    @extend .sockel-input;
+    @include p.input;
 }
 
 .auth-select {
-    @extend .sockel-input, .sockel-native-select;
+    @include p.input;
+    @include p.native-select;
 }
 
 .auth-muted,
@@ -888,7 +732,7 @@ h1.auth-heading {
 }
 
 .auth-hidden {
-    @include sockel-tokens.visually-hidden;
+    @include p.visually-hidden;
 }
 
 // The components' buttons carry text, not icons. They have no class of their
@@ -1017,7 +861,7 @@ h1.auth-heading {
 }
 
 .auth-user-email {
-    @extend .sockel-truncate;
+    @include p.truncate;
     max-width: 24ch;
 
     @include g.on-mobile {
@@ -1730,9 +1574,9 @@ image {
     }
 }
 
-// A value shown in a field's box, read-only, as wide as its text.
+// A value shown in a field's box (worn with `.sockel-input-box`), read-only, as
+// wide as its text.
 .input-value {
-    @extend .sockel-input-box;
     width: auto;
     user-select: text;
 }

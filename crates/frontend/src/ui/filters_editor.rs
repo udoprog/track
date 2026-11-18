@@ -289,7 +289,7 @@ impl FiltersEditor {
             api::FilterPredicate::Countries(v) => {
                 if v.is_empty() {
                     html! {
-                        <span class="input-value">
+                        <span class="sockel-input-box input-value">
                             <span class="icon globe-alt" aria-hidden="true" />
                             <span>{"All countries"}</span>
                         </span>

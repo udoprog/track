@@ -3,7 +3,6 @@
 /target/
 /dist/
 /crates/frontend/dist/
-/crates/frontend/style/main.css
 /image-cache/
 /.claude/
 /memory

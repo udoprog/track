@@ -25,6 +25,9 @@ yew = { version = "0.23.0", features = ["csr"] }
 form_urlencoded = "1.2.2"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 
+[build-dependencies]
+sockel-build = "0.1"
+
 [dependencies.web-sys]
 version = "0.3"
 features = [

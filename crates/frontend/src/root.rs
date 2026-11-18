@@ -6,6 +6,8 @@ use yew::prelude::*;
 use crate::app::App;
 use crate::l10n;
 
+const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
+
 /// Signs the user in before the app, and its websocket, start.
 #[function_component]
 pub(super) fn Root() -> Html {
@@ -13,15 +15,18 @@ pub(super) fn Root() -> Html {
     let icons = use_memo((), |()| icon_set());
 
     html! {
-        <ContextProvider<Phrases> context={(*phrases).clone()}>
-            <ContextProvider<IconSet> context={(*icons).clone()}>
-                <OverlayHost>
-                    <AuthProvider>
-                        <App />
-                    </AuthProvider>
-                </OverlayHost>
-            </ContextProvider<IconSet>>
-        </ContextProvider<Phrases>>
+        <>
+            <sockel::Styles css={STYLESHEET} />
+            <ContextProvider<Phrases> context={(*phrases).clone()}>
+                <ContextProvider<IconSet> context={(*icons).clone()}>
+                    <OverlayHost>
+                        <AuthProvider>
+                            <App />
+                        </AuthProvider>
+                    </OverlayHost>
+                </ContextProvider<IconSet>>
+            </ContextProvider<Phrases>>
+        </>
     }
 }
 

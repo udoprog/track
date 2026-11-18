@@ -37,13 +37,10 @@ Still in the experimental stage. Users beware!
 
 ## Running track
 
-The frontend is built with [trunk] into `dist/`, its stylesheet with [trug]
-(from a trunk hook, so `trug` must be on `PATH`; it is not published yet, so
-install it from a checkout beside this one). The server embeds `dist/`, so it
-has to be built first:
+The frontend is built with [trunk] into `dist/`. The server embeds that
+directory, so it has to be built first:
 
 ```text
-$ cargo install --path ../trug
 $ trunk build --release
 $ cargo run --release
 ```
@@ -61,7 +58,6 @@ Once it is running, go to `Settings` and configure your API keys for
 TheTVDB and TheMovieDB. Unfortunately I cannot help you with this.
 
 [trunk]: https://trunkrs.dev
-[trug]: https://github.com/udoprog/trug
 
 <br>
 
