@@ -6,8 +6,6 @@ resolver = "2"
 [patch.crates-io]
 phrasebook = { path = "../phrasebook" }
 phrasebook-catalog = { path = "../phrasebook/crates/phrasebook-catalog" }
-sockel = { path = "../sockel" }
-sockel-build = { path = "../sockel/sockel-build" }
 watchword = { path = "../watchword" }
 watchword-core = { path = "../watchword/crates/watchword-core" }
 watchword-yew023 = { path = "../watchword/crates/watchword-yew023" }
