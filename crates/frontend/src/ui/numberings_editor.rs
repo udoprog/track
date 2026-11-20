@@ -58,7 +58,7 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                     };
 
                     html_nested! {
-                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP, (!shown).then_some("numbering-hidden"))}>
+                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, (!shown).then_some("numbering-hidden"))}>
                             <ReorderHandle class={dim.clone()} />
 
                             <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT, dim.clone())}>

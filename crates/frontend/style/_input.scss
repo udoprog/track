@@ -20,9 +20,9 @@
 }
 
 // The app's own buttons (and watchword's), and what sockel's take from them:
-// the icon colour, `selected`, the row gap, unselectable text and the pager
-// buttons' least width. sockel's `$button-part-*` tokens cover only justify,
-// least width and radius, so they cannot replace this element rule.
+// the icon colour, `selected`, the row gap and unselectable text. sockel's
+// `$button-part-*` tokens cover only justify, least width and radius, so they
+// cannot replace this element rule.
 button {
     display: flex;
     gap: v.$text-gap;
@@ -78,7 +78,8 @@ button {
     @include g.on-mobile {
         height: v.$input-height-touch;
 
-        &:not(.sockel-button, .track-mobile-has-text) {
+        // Not sockel's pager buttons, which share their row's width.
+        &:not(.sockel-button, .sockel-pager-button, .track-mobile-has-text) {
             justify-content: center;
             min-width: v.$input-height-touch;
         }

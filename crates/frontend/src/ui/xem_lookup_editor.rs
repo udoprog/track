@@ -48,7 +48,7 @@ pub(crate) fn XemLookupEditor(props: &Props) -> Html {
         <Reorder class={classes!(class::FORM, "xem-lookup")} {on_move} quick_keys=true titles=true>
             {
                 for sources.iter().map(|source| html_nested! {
-                    <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP)}>
+                    <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER)}>
                         <ReorderHandle />
 
                         <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>

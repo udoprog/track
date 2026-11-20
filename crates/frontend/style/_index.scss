@@ -1516,6 +1516,9 @@ image {
 @mixin input-group-base {
     display: flex;
     gap: 0;
+    // Never wider than its container: its fields shrink, and a group that
+    // wraps (a reorder row without `.sockel-nowrap`) breaks onto a new line.
+    max-width: 100%;
 
     // Wins over the controls' own radius by coming after `_input.scss` in the
     // cascade and by its child + pseudo-class specificity, not by !important.
@@ -1603,6 +1606,12 @@ input-label-controls {
 // The current page is medium weight, as the app's pager always had it.
 .sockel-pager-button[aria-current]:not([aria-current='false']) {
     font-weight: v.$bold-weight;
+}
+
+// A pager beside other controls narrows its buttons to fit its row rather than
+// push the row past the page, as sockel sizes them.
+.sockel-pager {
+    min-width: 0;
 }
 
 // A list page's controls: a search field, then sort and filter chips, then

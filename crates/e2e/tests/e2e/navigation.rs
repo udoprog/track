@@ -1,3 +1,4 @@
+use yew_e2e::Fixture;
 use yew_e2e::prelude::*;
 
 use super::Track;
@@ -375,5 +376,58 @@ pub(crate) async fn ensure_menu_rows_align(driver: &TestDriver, selector: &str) 
             "menu icons and labels do not line up: {positions:?}"
         );
     }
+    Ok(())
+}
+
+/// At phone widths nothing on the main pages sticks out past the app's right
+/// edge. The browser keeps its window at least 500px wide, already the phone
+/// layout, so the app itself is narrowed to each phone width.
+pub async fn phone_pages_fit_the_width(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
+    // Each page, and what it waits for before it is measured.
+    const PAGES: [(&str, &str); 9] = [
+        ("/", ".track-page-controls"),
+        ("/media", ".track-media-grid"),
+        ("/people", "#page h1"),
+        ("/queue", "#page h1"),
+        ("/search", "#page h1"),
+        ("/settings/preferences", ".track-input-group"),
+        ("/settings/sources", ".sockel-reorder-row"),
+        ("/users", "#page h1"),
+        ("/account", "#page h1"),
+    ];
+
+    driver.set_window_size(500, 850).await?;
+
+    for (path, ready) in PAGES {
+        driver
+            .webdriver()
+            .goto(format!("{}{path}", track.url()))
+            .await?;
+        driver.find_first(ready).await?;
+        let app = driver.find_one_by("#application").await?;
+
+        for width in [320, 375, 414] {
+            driver
+                .set_style(&app, "width", &format!("{width}px"))
+                .await?;
+
+            let wide = driver
+                .webdriver()
+                .execute(
+                    "const app = document.getElementById('application');
+                     const edge = app.getBoundingClientRect().right + 0.5;
+                     return [...app.querySelectorAll('*')]
+                         .filter(el => el.getBoundingClientRect().right > edge
+                             && el.parentElement.getBoundingClientRect().right <= edge)
+                         .map(el => el.localName + '.' + String(el.className).trim().split(/\\s+/).join('.'));",
+                    Vec::new(),
+                )
+                .await?
+                .convert::<Vec<String>>()?;
+
+            ensure!(wide.is_empty(), "{path} is wider than {width}px: {wide:?}");
+        }
+    }
+
     Ok(())
 }

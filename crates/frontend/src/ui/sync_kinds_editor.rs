@@ -69,7 +69,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                     let current = entry.kinds.intersect(capability);
 
                     html_nested! {
-                        <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER, sockel::class::NOWRAP)}>
+                        <ReorderItem id={source.as_id()} name={source.as_label()} class={classes!(class::INPUT_GROUP, sockel::class::CLUSTER)}>
                             <ReorderHandle />
 
                             <span class={classes!(class::INPUT_LABEL, class::HAS_TEXT)}>
