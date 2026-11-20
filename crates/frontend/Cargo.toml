@@ -16,7 +16,7 @@ gloo = "0.13.0"
 jiff-tzdb = "1.0"
 musli-web = { version = "0.6.0", default-features = false, features = ["web03", "yew023"] }
 phrasebook = { version = "0.2", features = ["browser", "yew023"] }
-sockel = { version = "0.2.1", default-features = false, features = ["button", "confirm", "field", "head", "icons", "input", "layout", "menu", "notice", "overlay", "pager", "reorder", "skeleton"] }
+sockel = { version = "0.3.0", default-features = false, features = ["button", "confirm", "field", "head", "icons", "input", "layout", "menu", "notice", "overlay", "pager", "reorder", "skeleton"] }
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = "0.1.44"
 tracing-wasm = "0.2.1"
@@ -26,10 +26,10 @@ form_urlencoded = "1.2.2"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 
 [build-dependencies]
-sockel-build = "0.2.1"
+sockel-build = "0.3.0"
 
 [dev-dependencies]
-sockel-build = "0.2.1"
+sockel-build = "0.3.0"
 
 [dependencies.web-sys]
 version = "0.3"
