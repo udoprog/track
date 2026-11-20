@@ -19,8 +19,10 @@
     }
 }
 
-// The app's own buttons (and watchword's), and what sockel's (`.sockel-button`,
-// configured in main.scss) take from them: the icon colour, and `selected`.
+// The app's own buttons (and watchword's), and what sockel's take from them:
+// the icon colour, `selected`, the row gap, unselectable text and the pager
+// buttons' least width. sockel's `$button-part-*` tokens cover only justify,
+// least width and radius, so they cannot replace this element rule.
 button {
     display: flex;
     gap: v.$text-gap;
