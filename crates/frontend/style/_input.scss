@@ -45,7 +45,8 @@ button {
         cursor: pointer;
     }
 
-    &:hover:not(:disabled):where(:not(.sockel-drag-handle)) {
+    // Nor sockel's menu items, whose hover changes their fill only.
+    &:hover:not(:disabled):where(:not(.sockel-drag-handle, .sockel-menu-item)) {
         border-color: v.$color-primary;
     }
 
