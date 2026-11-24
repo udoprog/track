@@ -51,7 +51,7 @@ pub(super) struct DashboardQuery {
     pub(super) view: DashboardView,
     /// Which media kinds the tabs show.
     pub(super) selection: MediaSelection,
-    /// The History tab's title filter.
+    /// Text filter applied across the dashboard tabs.
     pub(super) filter: String,
 }
 

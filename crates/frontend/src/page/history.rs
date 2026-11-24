@@ -29,7 +29,6 @@ pub(crate) struct History {
     groups: Vec<api::HistoryGroup>,
     /// Whether more groups match past the current page.
     has_more: bool,
-    filter: String,
     /// Unfolded groups, by their newest watch.
     expanded: HashSet<api::WatchedId>,
     time: TimeInfo,
@@ -52,7 +51,6 @@ pub(crate) enum Msg {
     SetTime(TimeInfo),
     Load,
     Loaded(Result<ws::Packet<api::ListHistory>, ws::Error>),
-    Filter(String),
     Toggle(api::WatchedId),
 }
 
@@ -62,7 +60,6 @@ pub(crate) struct Props {
     pub(crate) filter: String,
     pub(crate) selection: MediaSelection,
     pub(crate) on_set_page: Callback<usize>,
-    pub(crate) on_filter: Callback<String>,
 }
 
 impl Component for History {
@@ -92,7 +89,6 @@ impl Component for History {
             channel,
             groups: Vec::new(),
             has_more: false,
-            filter: ctx.props().filter.clone(),
             expanded: HashSet::new(),
             time,
             _time_handle,
@@ -116,7 +112,6 @@ impl Component for History {
 
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
         let props = ctx.props();
-        self.filter = props.filter.clone();
 
         if old_props.page != props.page || old_props.selection != props.selection {
             self.load(ctx);
@@ -131,17 +126,10 @@ impl Component for History {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
         // Only the pages up to the next one are known.
         let page = ctx.props().page;
         let total_pages = page + 1 + usize::from(self.has_more);
         let on_page = ctx.props().on_set_page.clone();
-
-        let on_filter = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::Filter(input.value())
-        });
 
         let today = self.time.date();
 
@@ -163,20 +151,11 @@ impl Component for History {
 
         html! {
             <>
-                <div class={class::LIST_CONTROLS}>
-                    <div class={class::SEARCH_FIELD}>
-                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
-                        <input type="text" placeholder="Filter" aria-label="Filter history" value={self.filter.clone()} oninput={on_filter} />
-
-                        if !self.filter.is_empty() {
-                            <Button icon={class::ICON_X_MARK} title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
-                        }
-                    </div>
-
-                    if self.loaded {
+                if self.loaded {
+                    <div class={class::LIST_CONTROLS}>
                         <Pager {page} pages={total_pages} on_page={on_page.clone()} />
-                    }
-                </div>
+                    </div>
+                }
 
                 if !self.loaded || self.list_req.is_pending() {
                     <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::LOOSE, sockel::class::CENTER)}>
@@ -262,11 +241,6 @@ impl History {
                 self.loaded = true;
                 Ok(true)
             }
-            Msg::Filter(filter) => {
-                self.filter = filter.clone();
-                ctx.props().on_filter.emit(filter);
-                Ok(true)
-            }
             Msg::Toggle(id) => {
                 if !self.expanded.remove(&id) {
                     self.expanded.insert(id);
@@ -290,7 +264,7 @@ impl History {
             .channel
             .request()
             .body(api::ListHistoryRequest {
-                filter: self.filter.clone(),
+                filter: props.filter.clone(),
                 shows: props.selection.shows,
                 movies: props.selection.movies,
                 offset: props.page.saturating_mul(PAGE_SIZE),

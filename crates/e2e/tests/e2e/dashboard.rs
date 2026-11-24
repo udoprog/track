@@ -487,3 +487,124 @@ pub async fn schedule_keeps_weeks_when_more_are_shown(
     );
     Ok(())
 }
+
+/// Typing in the dashboard filter narrows What's Next, Upcoming, and Schedule
+/// case-insensitively, persists across tab switches and reload, and clearing it
+/// restores the full list.
+pub async fn filters_across_tabs(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    const INPUT: &str = "input[aria-label='Filter dashboard']";
+
+    driver.set_window_size(1200, 900).await?;
+    driver
+        .wait_texts(".track-pending-title", ["Seeded Show"])
+        .await?;
+
+    // Matches episode title case-insensitively on What's Next.
+    driver.find_one_by(INPUT).await?.send_keys("FIRST").await?;
+    driver
+        .wait_texts(".track-pending-title", ["Seeded Show"])
+        .await?;
+    let url = driver.webdriver().current_url().await?;
+    ensure!(
+        url.query().is_some_and(|q| q.contains("filter=FIRST")),
+        "expected ?filter=FIRST in {url}"
+    );
+
+    // Non-matching filter shows the filtered empty message.
+    driver
+        .find_one_by(INPUT)
+        .await?
+        .send_keys(" unmatched")
+        .await?;
+    driver.wait_count(".track-pending-item", 0).await?;
+    driver
+        .wait_until("the empty filter message", async || {
+            let texts = driver.rendered_texts("#page p.track-text-muted").await?;
+            Ok(texts.iter().any(|t| t == "Nothing matches."))
+        })
+        .await?;
+
+    // Clearing restores the list and clears ?filter.
+    driver
+        .find_one_by("[title='Clear filter']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".track-pending-title", ["Seeded Show"])
+        .await?;
+
+    // Type a filter that matches the upcoming show, not What's Next, and switch
+    // to Upcoming: the filter is preserved and narrows the agenda.
+    driver.find_one_by(INPUT).await?.send_keys("FUTURE").await?;
+    driver.wait_count(".track-pending-item", 0).await?;
+
+    driver
+        .find_one_by(".track-tab[title='Upcoming']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(FUTURE).await?;
+    let value = driver.find_one_by(INPUT).await?.value().await?;
+    ensure!(value == "FUTURE", "filter not kept on Upcoming: {value:?}");
+
+    // Narrowing further hides the upcoming show.
+    driver.find_one_by(INPUT).await?.send_keys(" nope").await?;
+    driver.wait_count(".track-schedule-item", 0).await?;
+
+    // Clear, re-filter, and switch to Schedule.
+    driver
+        .find_one_by("[title='Clear filter']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(FUTURE).await?;
+    driver.find_one_by(INPUT).await?.send_keys("future").await?;
+
+    driver
+        .find_one_by(".track-tab[title='Schedule']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_first(".track-calendar-cell.track-today")
+        .await?;
+
+    // Weeks start on Monday, so on a Sunday tomorrow is in next week.
+    let sunday = driver
+        .webdriver()
+        .execute("return new Date().getDay() === 0;", Vec::new())
+        .await?
+        .convert::<bool>()?;
+
+    if sunday {
+        driver
+            .find_one_by("[title='Next week']")
+            .await?
+            .click()
+            .await?;
+    }
+
+    driver.find_one_by(FUTURE).await?;
+
+    // Persists across reload.
+    driver.reload().await?;
+    driver.find_one_by(FUTURE).await?;
+    let value = driver.find_one_by(INPUT).await?.value().await?;
+    ensure!(
+        value == "future",
+        "filter not kept across reload: {value:?}"
+    );
+
+    // Filtering out hides it on Schedule, clearing restores it.
+    driver.find_one_by(INPUT).await?.send_keys(" nope").await?;
+    driver.wait_count(".track-schedule-item", 0).await?;
+
+    driver
+        .find_one_by("[title='Clear filter']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(FUTURE).await?;
+    Ok(())
+}

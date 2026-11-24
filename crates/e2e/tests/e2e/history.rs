@@ -148,7 +148,7 @@ pub async fn pages_and_filters_the_history(driver: &mut TestDriver, _: &mut Trac
     driver.wait_count(".track-history-item", PAGE).await?;
 
     driver
-        .find_one_by("input[aria-label='Filter history']")
+        .find_one_by("input[aria-label='Filter dashboard']")
         .await?
         .send_keys("SHOW")
         .await?;
@@ -161,7 +161,7 @@ pub async fn pages_and_filters_the_history(driver: &mut TestDriver, _: &mut Trac
     let filter = driver
         .webdriver()
         .execute(
-            "return document.querySelector(\"input[aria-label='Filter history']\").value;",
+            "return document.querySelector(\"input[aria-label='Filter dashboard']\").value;",
             Vec::new(),
         )
         .await?
@@ -169,7 +169,7 @@ pub async fn pages_and_filters_the_history(driver: &mut TestDriver, _: &mut Trac
     ensure!(filter == "SHOW", "the filter is not kept: {filter:?}");
 
     driver
-        .find_one_by("input[aria-label='Filter history']")
+        .find_one_by("input[aria-label='Filter dashboard']")
         .await?
         .send_keys(" nothing")
         .await?;

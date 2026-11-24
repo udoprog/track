@@ -26,9 +26,9 @@ struct PendingState {
 pub(crate) struct WatchNext {
     channel: ws::Channel,
     pending: Vec<PendingState>,
-    /// Indices into `pending` kept by the media-kind selection. Maintained when
-    /// `pending` or the selection changes so `view` and `clamp_page` neither
-    /// reallocate nor re-filter per render.
+    /// Indices into `pending` kept by the media-kind selection and text filter.
+    /// Maintained when `pending`, the selection or the filter changes so `view`
+    /// and `clamp_page` neither reallocate nor re-filter per render.
     order: Vec<usize>,
     pending_loaded: bool,
     preferences: api::Preferences,
@@ -93,6 +93,8 @@ pub(crate) struct Props {
     pub(crate) on_clamp_page: Callback<usize>,
     /// Which media kinds are shown (owned by the parent's URL query).
     pub(crate) selection: MediaSelection,
+    /// Text filter (owned by the parent's URL query).
+    pub(crate) filter: String,
 }
 
 impl Component for WatchNext {
@@ -166,10 +168,12 @@ impl Component for WatchNext {
     }
 
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
-        // The media-kind selection lives in props; rebuild the filtered order
-        // when it changes. A bare page change leaves the order untouched.
-        if old_props.selection != ctx.props().selection {
+        // The media-kind selection and text filter live in props; rebuild the
+        // filtered order when either changes. A bare page change leaves it
+        // untouched.
+        if old_props.selection != ctx.props().selection || old_props.filter != ctx.props().filter {
             self.rebuild_order(ctx);
+            self.clamp_page(ctx);
         }
 
         true
@@ -230,7 +234,9 @@ impl Component for WatchNext {
                         { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
                     </div>
                 } else if total == 0 {
-                    <p class={class::TEXT_MUTED}>{"Nothing pending."}</p>
+                    <p class={class::TEXT_MUTED}>
+                        {if ctx.props().filter.is_empty() { "Nothing pending." } else { "Nothing matches." }}
+                    </p>
                 } else {
                     <div ref={self.grid.clone()} class={class::PENDING_GRID} style={format!("--pending-columns: {}", self.columns)}>
                         { for self.ordered().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
@@ -527,18 +533,22 @@ impl WatchNext {
         }
     }
 
-    /// Rebuild `order` from the current media-kind selection. Called whenever
-    /// `pending` or the selection changes. The pending items it indexes are what
-    /// pages are counted over.
+    /// Rebuild `order` from the current media-kind selection and text filter.
+    /// Called whenever `pending`, the selection or the filter changes. The
+    /// pending items it indexes are what pages are counted over.
     fn rebuild_order(&mut self, ctx: &Context<Self>) {
         let selection = ctx.props().selection;
+        let filter = ctx.props().filter.to_lowercase();
 
         self.order.clear();
         self.order.extend(
             self.pending
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| selection.contains(p.pending.info.media_kind()))
+                .filter(|(_, p)| {
+                    selection.contains(p.pending.info.media_kind())
+                        && matches_pending_filter(&p.pending.info, &filter)
+                })
                 .map(|(i, _)| i),
         );
     }
@@ -788,6 +798,25 @@ impl WatchNext {
                 </div>
             </div>
         }
+    }
+}
+
+fn matches_pending_filter(info: &api::PendingInfo, filter: &str) -> bool {
+    if filter.is_empty() {
+        return true;
+    }
+
+    match info {
+        api::PendingInfo::Episode { show, episode, .. } => {
+            show.as_deref()
+                .is_some_and(|s| s.to_lowercase().contains(filter))
+                || episode
+                    .as_deref()
+                    .is_some_and(|e| e.to_lowercase().contains(filter))
+        }
+        api::PendingInfo::Movie { title, .. } => title
+            .as_deref()
+            .is_some_and(|t| t.to_lowercase().contains(filter)),
     }
 }
 

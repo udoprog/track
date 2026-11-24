@@ -96,6 +96,20 @@ pub(super) fn view_day_heading(day: api::Date, today: api::Date) -> Html {
     }
 }
 
+/// Whether `item`'s title matches a lowercase text `filter`.
+pub(super) fn matches_schedule_filter(item: &api::ScheduleItem, filter: &str) -> bool {
+    if filter.is_empty() {
+        return true;
+    }
+
+    let title = match item {
+        api::ScheduleItem::Show(entry) => &entry.show_title,
+        api::ScheduleItem::Movie(movie) => &movie.title,
+    };
+
+    title.to_lowercase().contains(filter)
+}
+
 /// One show or movie on a day: a small poster, its title, and when each of its
 /// episodes airs. The title opens the show at its latest episode that day, an
 /// episode opens that episode. `compact` is the stacked form for a narrow

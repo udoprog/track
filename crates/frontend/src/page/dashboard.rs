@@ -39,7 +39,7 @@ pub(crate) struct Props {
     pub(crate) view: DashboardView,
     /// Which media kinds the tabs show.
     pub(crate) selection: MediaSelection,
-    /// The History tab's title filter.
+    /// Text filter applied across the dashboard tabs.
     pub(crate) filter: String,
 }
 
@@ -85,6 +85,12 @@ impl Component for Dashboard {
         let link = ctx.link();
         let view = ctx.props().view;
         let selection = ctx.props().selection;
+        let filter = &ctx.props().filter;
+
+        let on_filter = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::SetFilter(input.value())
+        });
 
         let tab = |v: DashboardView, icon: &'static str, label: &'static str| {
             let onclick = link.callback(move |_| Msg::SetView(v));
@@ -111,11 +117,23 @@ impl Component for Dashboard {
                     </div>
                 </div>
 
+                <div class={class::LIST_CONTROLS}>
+                    <div class={class::SEARCH_FIELD}>
+                        <span class={classes!(class::ICON, class::ICON_MAGNIFYING_GLASS)} aria-hidden="true" />
+                        <input type="text" placeholder="Filter" aria-label="Filter dashboard" value={filter.clone()} oninput={on_filter} />
+
+                        if !filter.is_empty() {
+                            <Button icon={class::ICON_X_MARK} title="Clear filter" onclick={link.callback(|_| Msg::SetFilter(String::new()))} />
+                        }
+                    </div>
+                </div>
+
                 <div class={sockel::class::STACK}>
                     { match view {
                         DashboardView::WatchNext => html! {
                             <WatchNext
                                 page={ctx.props().page}
+                                filter={filter.clone()}
                                 selection={selection}
                                 on_set_page={link.callback(Msg::SetPage)}
                                 on_clamp_page={link.callback(Msg::ClampPage)}
@@ -124,6 +142,7 @@ impl Component for Dashboard {
                         DashboardView::Upcoming => html! {
                             <ScheduleRange
                                 day_offset={ctx.props().range}
+                                filter={filter.clone()}
                                 selection={selection}
                                 on_set_range={link.callback(Msg::SetRange)}
                             />
@@ -132,6 +151,7 @@ impl Component for Dashboard {
                             <Calendar
                                 week_offset={ctx.props().week}
                                 week_start={ctx.props().week_start}
+                                filter={filter.clone()}
                                 selection={selection}
                                 on_set_week={link.callback(Msg::SetWeek)}
                                 on_set_week_start={link.callback(Msg::SetWeekStart)}
@@ -141,10 +161,9 @@ impl Component for Dashboard {
                         DashboardView::History => html! {
                             <History
                                 page={ctx.props().page}
-                                filter={ctx.props().filter.clone()}
+                                filter={filter.clone()}
                                 selection={selection}
                                 on_set_page={link.callback(Msg::SetPage)}
-                                on_filter={link.callback(Msg::SetFilter)}
                             />
                         },
                     } }

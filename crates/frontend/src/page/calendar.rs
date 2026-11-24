@@ -15,7 +15,8 @@ use sockel::{Skeleton, SkeletonShape};
 use crate::ui::{Button, ContextMenu};
 
 use super::schedule_item::{
-    RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
+    RangeControls, matches_schedule_filter, view_day_heading, view_range_controls,
+    view_schedule_item, view_stepper,
 };
 
 #[derive(Properties, PartialEq)]
@@ -36,6 +37,8 @@ pub(crate) struct Props {
     pub(crate) on_reset: Callback<()>,
     /// Which media kinds are shown (owned by the parent's URL query).
     pub(crate) selection: MediaSelection,
+    /// Text filter (owned by the parent's URL query).
+    pub(crate) filter: String,
 }
 
 pub(crate) struct Calendar {
@@ -146,6 +149,7 @@ impl Component for Calendar {
         let week_offset = ctx.props().week_offset;
         let week_start = ctx.props().week_start;
         let selection = ctx.props().selection;
+        let filter = ctx.props().filter.to_lowercase();
         let window_start = window_start(today, week_offset);
         let weeks = build_weeks(window_start, week_count);
 
@@ -237,7 +241,7 @@ impl Component for Calendar {
                                     let is_past  = day < today;
                                     let known = self.loaded.is_some_and(|(first, last)| first <= day && day <= last);
                                     let mut items = self.schedule_index.get(&day).map(|&i| self.schedule[i].items()).unwrap_or_default();
-                                    items.retain(|i| selection.contains(i.kind()));
+                                    items.retain(|i| selection.contains(i.kind()) && matches_schedule_filter(i, &filter));
 
                                     html! {
                                         <div key={index} class={classes!(

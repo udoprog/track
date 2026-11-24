@@ -14,7 +14,8 @@ use sockel::{Skeleton, SkeletonShape};
 use crate::ui::ContextMenu;
 
 use super::schedule_item::{
-    RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
+    RangeControls, matches_schedule_filter, view_day_heading, view_range_controls,
+    view_schedule_item, view_stepper,
 };
 
 #[derive(Properties, PartialEq)]
@@ -26,6 +27,8 @@ pub(crate) struct Props {
     pub(crate) on_set_range: Callback<i32>,
     /// Which media kinds are shown (owned by the parent's URL query).
     pub(crate) selection: MediaSelection,
+    /// Text filter (owned by the parent's URL query).
+    pub(crate) filter: String,
 }
 
 /// The Upcoming agenda: a configurable number of consecutive days, each with
@@ -316,13 +319,14 @@ impl ScheduleRange {
     fn view_day(&self, ctx: &Context<Self>, day: api::Date, today: api::Date) -> Html {
         let link = ctx.link();
         let selection = ctx.props().selection;
+        let filter = ctx.props().filter.to_lowercase();
 
         let mut items = self
             .schedule_index
             .get(&day)
             .map(|&i| self.schedule[i].items())
             .unwrap_or_default();
-        items.retain(|i| selection.contains(i.kind()));
+        items.retain(|i| selection.contains(i.kind()) && matches_schedule_filter(i, &filter));
 
         let on_hover = link.callback(Msg::Hover);
 
