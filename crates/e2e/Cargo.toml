@@ -18,7 +18,7 @@ tokio = { version = "1.53.1", features = ["full"] }
 # frontend yew-e2e builds for the run with trug.
 track = { path = "../track", default-features = false }
 tracing-subscriber = "0.3.23"
-yew-e2e = "0.2.0"
+yew-e2e = "0.2.4"
 
 [[test]]
 name = "e2e"
