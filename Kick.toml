@@ -1,3 +1,6 @@
+lib_badges = ["-crates.io"]
+readme_badges = ["-crates.io"]
+
 [build]
 binary = "track"
 pre_build = ["trug build --release"]
