@@ -635,14 +635,14 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     };
 
     html! {
-        <header id="toolbar" class={classes!(class::TOOLBAR, class::TOOLBAR_PADDING)}>
+        <header id="toolbar" class={classes!(class::TOOLBAR, class::TOOLBAR_PADDING, class::WRAP)}>
             <div class={classes!(sockel::class::CLUSTER, sockel::class::NOWRAP, sockel::class::SNUG)}>
                 <Link to={Route::Dashboard(DashboardQuery::default())} class={class::SITE_TITLE} onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 
             <Button class={class::TOOLBAR_TOGGLE} icon={if *menu_open { class::ICON_X_MARK } else { class::ICON_BARS_3 }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
 
-            <nav class={classes!(class::TOOLBAR_DROPDOWN, (!*menu_open).then_some(class::DESKTOP_ONLY))} aria-label="Main">
+            <nav class={classes!(class::TOOLBAR_DROPDOWN, class::WRAP, (!*menu_open).then_some(class::DESKTOP_ONLY))} aria-label="Main">
                 <div class={classes!(class::TOOLBAR_ITEM, class::MOBILE_HAS_TEXT)} title={connection_title} role="img" aria-label={connection_title}>
                     <span class={classes!(class::ICON, connection_style, connection_icon)} aria-hidden="true" />
                     <span class={class::MOBILE_ONLY}>{connection_title}</span>

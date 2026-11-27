@@ -266,22 +266,30 @@ pub(crate) async fn wait_heading(driver: &TestDriver, text: &str) -> Result<()> 
 }
 
 /// The app bar's items have room around their labels on a wide screen, and
-/// at tablet width they still leave the site title whole.
+/// at narrower desktop widths they wrap rather than clip the site title or
+/// stick out past the window.
 pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(1250, 900).await?;
     let media = driver.find_one_by("#toolbar a[title=Media]").await?;
     let padding = media.css("padding-left").await?;
     ensure!(padding == "12px", "the items are padded {padding}");
 
-    driver.set_window_size(860, 900).await?;
-    let ret = driver
-        .webdriver()
-        .execute(
-            "const t = document.querySelector('.track-site-title'); return t.scrollWidth <= t.clientWidth + 1;",
-            Vec::new(),
-        )
-        .await?;
-    ensure!(ret.convert::<bool>()?, "the site title is clipped at 860px");
+    for width in [780, 860] {
+        driver.set_window_size(width, 900).await?;
+        let ret = driver
+            .webdriver()
+            .execute(
+                "const t = document.querySelector('.track-site-title');
+                 const bar = document.getElementById('toolbar');
+                 return [t.scrollWidth <= t.clientWidth + 1, bar.scrollWidth <= bar.clientWidth + 1];",
+                Vec::new(),
+            )
+            .await?;
+        let [title, bar] = ret.convert::<[bool; 2]>()?;
+        ensure!(title, "the site title is clipped at {width}px");
+        ensure!(bar, "the app bar overflows at {width}px");
+    }
+
     Ok(())
 }
 
