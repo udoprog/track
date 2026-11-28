@@ -15,9 +15,20 @@ it. Narrow the results with the Shows and Movies chips:
 media-kind
 ```
 
+![Search results for Breaking Bad: the show and the movie from TMDB, and the
+show from TheTVDB, each with a Track button](images/search.webp)
+
 Press ![Track](button:plus) on a result to add it. Track syncs it from its
-sources and opens its page. A result you already follow says
+sources and opens its page, already tracked. A result you already follow says
 ![Tracked](icon:check) **Tracked** and opens the page you have.
+
+![A freshly added show: its backdrop, title and year, the sources it was
+synced from, and its actions](images/show-tracked.webp)
+
+On a phone the results stack, with the button under each one:
+
+![Search results on a phone, the first one already
+tracked](images/search-phone.webp)
 
 ## Tracking
 

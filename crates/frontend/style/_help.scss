@@ -137,6 +137,15 @@ a.track-help-link {
     }
 }
 
+// A screenshot of the app, shown at its own size or narrower.
+img.track-help-picture {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius;
+}
+
 .track-icon.track-help-icon {
     vertical-align: middle;
 }

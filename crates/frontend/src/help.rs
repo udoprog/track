@@ -140,8 +140,8 @@ mod tests {
         }
     }
 
-    /// Every link points at a section, every icon is vendored and every demo
-    /// is one the renderer draws.
+    /// Every link points at a section, every icon is vendored, every picture
+    /// is stored and every demo is one the renderer draws.
     #[test]
     fn every_reference_resolves() {
         let icons = include_str!("../style/_icons_generated.scss");
@@ -155,6 +155,16 @@ mod tests {
                         assert!(
                             super::section(&dest_url).is_some(),
                             "{} links to unknown section {dest_url}",
+                            section.id
+                        );
+                    }
+                    Event::Start(Tag::Image { dest_url, .. })
+                        if crate::ui::markdown::picture(&dest_url).is_some() =>
+                    {
+                        let path = format!("{}/help/{dest_url}", env!("CARGO_MANIFEST_DIR"));
+                        assert!(
+                            std::path::Path::new(&path).is_file(),
+                            "{} shows missing picture {dest_url}",
                             section.id
                         );
                     }

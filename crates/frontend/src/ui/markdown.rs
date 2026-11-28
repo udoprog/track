@@ -5,6 +5,8 @@
 //! - `[text](section-id)`: a link to another help section;
 //! - `![label](icon:name)`: a track icon inline, `label` for screen readers;
 //! - `![label](button:name)`: a track button with that icon and label;
+//! - `![label](images/name.webp)`: a picture stored in `help/images/`, served
+//!   from [`IMAGES`];
 //! - a fenced block in the `track` language naming one of [`DEMOS`]: a real
 //!   component drawn as an illustration, see [`demo`].
 //!
@@ -20,6 +22,10 @@ use yew::virtual_dom::{VList, VNode, VTag, VText};
 use crate::class;
 use crate::router::MediaSelection;
 use crate::ui::{Button, MarkTimeMenu, MediaKindToggle, Tracked};
+
+/// Where the files under `help/images/` are served, by the copy in
+/// `index.html`.
+pub(crate) const IMAGES: &str = "/static/help/";
 
 /// The fence language a demo is written in.
 const DEMO_LANG: &str = "track";
@@ -191,6 +197,13 @@ impl Builder<'_> {
                     }
 
                     self.push(node);
+                } else if let Some(path) = picture(&dest) {
+                    let mut img = VTag::new("img");
+                    img.add_attribute("class", class::HELP_PICTURE);
+                    img.add_attribute("src", format!("{IMAGES}{path}"));
+                    img.add_attribute("alt", alt);
+                    img.add_attribute("loading", "lazy");
+                    self.push(VNode::VTag(Rc::new(img)));
                 }
             }
             Frame::Demo { name } => {
@@ -217,6 +230,13 @@ impl Builder<'_> {
             }
         }
     }
+}
+
+/// The path under `help/` of a picture image destination.
+pub(crate) fn picture(dest: &str) -> Option<&str> {
+    let name = dest.strip_prefix("images/")?;
+    let safe = !name.is_empty() && !name.contains(['/', '\\', ':']) && !name.starts_with('.');
+    safe.then_some(dest)
 }
 
 /// An illustration: real markup that cannot be focused or pressed.
@@ -456,6 +476,12 @@ mod tests {
         // The button is a component, which this walk does not enter.
         assert_eq!(rendered("![Add](button:plus)", None), ["p", "span"]);
         assert_eq!(rendered("```track\nnope\n```\n", None), ["pre", "code"]);
+        assert_eq!(
+            rendered("![Search](images/search.webp)", None),
+            ["p", "img"]
+        );
+        assert_eq!(rendered("![x](../secret.webp)", None), ["p"]);
+        assert_eq!(rendered("![x](images/../x.webp)", None), ["p"]);
     }
 
     #[test]
