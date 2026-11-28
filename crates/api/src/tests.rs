@@ -272,6 +272,23 @@ fn air_date_priority_prefers_higher_ranked_source() {
 }
 
 #[test]
+fn default_air_date_rules_accept_every_release() {
+    let releases = [
+        rel(RemoteSource::Tvmaze, Country::US, "HBO", 300),
+        rel(RemoteSource::Tvmaze, Country::GB, "", 100),
+    ];
+    let priority = default_air_date_priority();
+    let config = Config::default();
+
+    assert_eq!(config.air_date_filters, accept_all());
+    let aired = config
+        .air_date_filters
+        .effective_aired(&releases, &priority)
+        .unwrap();
+    assert_eq!(aired.inner().as_second(), 100);
+}
+
+#[test]
 fn air_date_rule_restricts_country() {
     let releases = [
         rel(RemoteSource::Tvmaze, Country::US, "", 300),

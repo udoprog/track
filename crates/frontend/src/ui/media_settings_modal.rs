@@ -136,7 +136,7 @@ impl Component for MediaSettingsModal {
             _sync_req: ws::Request::default(),
             data: None,
             default_release_filters: api::FilterRules::default_release_rules(),
-            default_air_date_filters: api::FilterRules::default(),
+            default_air_date_filters: api::FilterRules::default_air_date_rules(),
             numbering: None,
             syncing: false,
             time,

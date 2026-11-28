@@ -574,6 +574,21 @@ async fn fresh_config_has_the_default_release_rules() -> Result<()> {
     Ok(())
 }
 
+/// A database that never saved air-date rules uses the default one, so episodes
+/// get air dates on a fresh install.
+#[tokio::test]
+async fn fresh_config_has_the_default_air_date_rules() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    assert_eq!(
+        db.load_config().await?.air_date_filters,
+        api::FilterRules::default_air_date_rules()
+    );
+
+    Ok(())
+}
+
 /// Two users share the catalog but each has their own tracking, watch history
 /// and pending; deleting a user takes only their own rows with them.
 #[tokio::test]

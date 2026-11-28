@@ -1265,6 +1265,17 @@ impl FilterRules {
         }
     }
 
+    /// The default set of air-date rules: a single rule with no predicates,
+    /// accepting every release from the eligible sources.
+    pub fn default_air_date_rules() -> Self {
+        Self {
+            rules: vec![FilterRule {
+                name: String::new(),
+                predicates: Vec::new(),
+            }],
+        }
+    }
+
     /// Whether a movie release is accepted: the list must be non-empty and every
     /// rule must match.
     pub fn release_accepted(&self, release: &MovieRelease) -> bool {
@@ -2070,7 +2081,7 @@ impl Default for Config {
             auto_sync_interval_hours: 24,
             page_title: String::new(),
             release_filters: FilterRules::default_release_rules(),
-            air_date_filters: FilterRules::default(),
+            air_date_filters: FilterRules::default_air_date_rules(),
             sync_kinds: Vec::new(),
             sync_languages: vec![
                 Locale::DEFAULT,
