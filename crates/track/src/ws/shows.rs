@@ -31,7 +31,8 @@ impl WsHandler {
             .context("Expected a request payload")?;
         let mut seasons = self.db.seasons(Some(self.user.id), req.show_id).await?;
         self.add_season_names(req.show_id, &mut seasons).await?;
-        outgoing.write(api::ListSeasonsResponse { seasons });
+        let pending = self.db.pending_code(self.user.id, req.show_id).await?;
+        outgoing.write(api::ListSeasonsResponse { seasons, pending });
         Ok(())
     }
 

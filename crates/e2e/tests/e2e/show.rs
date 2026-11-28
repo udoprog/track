@@ -1330,6 +1330,77 @@ pub async fn pending_episode_is_jumped_to_from_any_season(
         .await
 }
 
+/// A show opened without a season opens on its pending episode's season,
+/// scrolled to the episode. A URL naming a season keeps it.
+pub async fn show_opens_on_the_pending_season(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    // Ten more episodes in season 2, the last pending, so it is out of view
+    // unless scrolled to.
+    track.execute(
+        "INSERT INTO episodes (id, show_id, season, episode, aired)
+         WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 9)
+         SELECT 3203 + i, 1001, 2, 3 + i, 1721209600000 + i * 604800000 FROM n;
+         UPDATE pending SET episode_id = 3212 WHERE show_id = 1001;",
+    )?;
+
+    driver.set_window_size(1200, 500).await?;
+    let show = show_url(driver).await?;
+    driver.webdriver().goto(&show).await?;
+    driver
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 2"],
+        )
+        .await?;
+    driver
+        .wait_until("S02E12 to scroll into view", async || {
+            in_view(driver, "[id='S02E12']", None).await
+        })
+        .await?;
+
+    driver.webdriver().goto(format!("{show}?season=1")).await?;
+    driver
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 1"],
+        )
+        .await?;
+    driver
+        .find_one_by(".track-toolbar-dropdown [title='Jump to pending episode S02E12']")
+        .await?;
+    Ok(())
+}
+
+/// The seeded show's page URL, without a season or fragment.
+async fn show_url(driver: &TestDriver) -> Result<String> {
+    open_show(driver).await?;
+    let mut url = driver.webdriver().current_url().await?;
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url.to_string())
+}
+
+/// A show without a pending episode opens on its first numbered season.
+pub async fn show_without_pending_opens_on_the_first_season(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    let show = show_url(driver).await?;
+    track.execute("DELETE FROM pending WHERE show_id = 1001;")?;
+    driver.webdriver().goto(&show).await?;
+    driver
+        .wait_texts(".track-detail-title", ["Seeded Show"])
+        .await?;
+    driver
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 1"],
+        )
+        .await
+}
+
 /// Escape and switching seasons both clear the picked episodes.
 pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;

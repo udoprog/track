@@ -686,7 +686,7 @@ fn task_route(kind: &api::TaskKind) -> Option<Route> {
         api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
             *show_id,
             ShowDetailQuery {
-                season: code.season,
+                season: Some(code.season),
                 episode: Some(*code),
                 ..ShowDetailQuery::default()
             },

@@ -290,7 +290,7 @@ impl History {
                 Route::ShowDetail(
                     show,
                     ShowDetailQuery {
-                        season: code.map(|c| c.season).unwrap_or_default(),
+                        season: code.map(|c| c.season),
                         episode: code,
                         orphaned: false,
                     },
@@ -386,7 +386,7 @@ impl History {
                 let to = Route::ShowDetail(
                     show,
                     ShowDetailQuery {
-                        season: code.season,
+                        season: Some(code.season),
                         episode: Some(code),
                         orphaned: false,
                     },

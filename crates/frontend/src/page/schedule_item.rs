@@ -127,7 +127,7 @@ pub(super) fn view_schedule_item(
             let route = Route::ShowDetail(
                 entry.show_id,
                 ShowDetailQuery {
-                    season: episode.map(|e| e.season).unwrap_or_default(),
+                    season: episode.map(|e| e.season),
                     episode,
                     orphaned: false,
                 },
@@ -162,7 +162,7 @@ pub(super) fn view_schedule_item(
                     let code = ep.code();
 
                     // The episode, not the show's latest one the title opens.
-                    let to = Route::ShowDetail(show_id, ShowDetailQuery { season: code.season, episode: Some(code), orphaned: false });
+                    let to = Route::ShowDetail(show_id, ShowDetailQuery { season: Some(code.season), episode: Some(code), orphaned: false });
 
                     html! {
                         <Link key={code.to_string()} {to} class={classes!(class::SCHEDULE_TIME, sockel::class::NUMERIC, compact.then_some(class::COMPACT))} title={format!("Open {code}")}>

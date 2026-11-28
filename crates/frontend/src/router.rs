@@ -589,7 +589,9 @@ impl QueueQuery {
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct ShowDetailQuery {
-    pub(super) season: api::SeasonNumber,
+    /// The season to show. Unset, the page picks one: the pending episode's
+    /// season, else the first numbered season.
+    pub(super) season: Option<api::SeasonNumber>,
     /// Whether the show details are currently displaying orphaned episodes.
     pub(super) orphaned: bool,
     /// Episode to scroll to, emitted as the URL fragment (`#S01E05`). Write-only:
@@ -602,8 +604,8 @@ impl ShowDetailQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
-        if self.season != api::SeasonNumber::FIRST {
-            let ordinal = self.season.ordinal().to_string();
+        if let Some(season) = self.season {
+            let ordinal = season.ordinal().to_string();
             s.append_pair("season", &ordinal);
         }
 
@@ -623,8 +625,7 @@ impl ShowDetailQuery {
                     this.season = value
                         .parse::<u32>()
                         .ok()
-                        .map(api::SeasonNumber::from_ordinal)
-                        .unwrap_or_default();
+                        .map(api::SeasonNumber::from_ordinal);
                 }
                 "orphaned" => {
                     this.orphaned = value.as_ref() == "true";

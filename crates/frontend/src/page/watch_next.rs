@@ -665,7 +665,7 @@ impl WatchNext {
                 episode_route = Route::ShowDetail(
                     *show_id,
                     ShowDetailQuery {
-                        season: *season,
+                        season: Some(*season),
                         episode: Some(api::Code::new(*season, *number)),
                         orphaned: false,
                     },

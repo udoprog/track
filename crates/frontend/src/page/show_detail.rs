@@ -324,8 +324,10 @@ impl From<UiMsg> for Msg {
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) show_id: api::ShowId,
+    /// The season named in the URL. Unset, the page opens on the pending
+    /// episode's season (see [`ShowDetail::default_season`]).
     #[prop_or_default]
-    pub(crate) season: api::SeasonNumber,
+    pub(crate) season: Option<api::SeasonNumber>,
     pub(crate) orphaned: bool,
 }
 
@@ -700,19 +702,27 @@ impl Component for ShowDetail {
             return true;
         }
 
-        if self.selected().map(|s| s.season) != Some(props.season) {
-            self.selected = self
-                .seasons
-                .iter()
-                .enumerate()
-                .find(|(_, s)| s.season == props.season)
-                .map(|(i, _)| i);
+        let (wanted, scroll_target) = match props.season {
+            Some(season) => (
+                self.seasons.iter().position(|s| s.season == season),
+                self.router.hash(),
+            ),
+            None => self.default_season(),
+        };
+
+        let wanted_season = wanted
+            .and_then(|i| self.seasons.get(i))
+            .map(|s| s.season)
+            .or(props.season);
+
+        if self.selected().map(|s| s.season) != wanted_season {
+            self.selected = wanted;
 
             self.episodes.clear();
             self.pending_episode = None;
             self.next_unwatched = None;
             self.confirm_remove_watch = None;
-            self.scroll_target = self.router.hash();
+            self.scroll_target = scroll_target;
             self.watched_by_episode.clear();
             self.clear_picked();
 
@@ -837,7 +847,7 @@ impl ShowDetail {
                 Ok(false)
             }
             api::AppEventKind::EpisodesChanged { show_id, season } if *show_id == props.show_id => {
-                if props.season == *season {
+                if self.season(props) == *season {
                     self.load_episodes(ctx);
                 }
 
@@ -947,31 +957,29 @@ impl ShowDetail {
                 Ok(true)
             }
             LoadMsg::Seasons(result) => {
-                self.seasons = result
+                let result = result
                     .context(Message::LoadingSeasons)?
                     .decode()
-                    .context(Message::LoadingSeasons)?
-                    .seasons;
+                    .context(Message::LoadingSeasons)?;
+
+                self.seasons = result.seasons;
+                self.show_pending = result.pending;
 
                 // Specials are extras: list them after the numbered seasons.
                 self.seasons
                     .sort_by_key(|s| matches!(s.season, api::SeasonNumber::Specials));
 
                 if self.selected.is_none() {
-                    let initial = self
-                        .seasons
-                        .iter()
-                        .enumerate()
-                        .find(|(_, s)| s.season == props.season)
-                        .map(|(i, _)| i);
+                    let initial = match props.season {
+                        Some(season) => self.seasons.iter().position(|s| s.season == season),
+                        None => {
+                            let (initial, scroll_target) = self.default_season();
+                            self.scroll_target = scroll_target;
+                            initial
+                        }
+                    };
 
-                    self.selected = initial.or_else(|| {
-                        self.seasons
-                            .iter()
-                            .enumerate()
-                            .find(|(_, s)| !s.season.is_special())
-                            .map(|(i, _)| i)
-                    });
+                    self.selected = initial.or_else(|| self.first_numbered_season());
 
                     self.load_episodes(ctx);
                     self.load_history(ctx);
@@ -1140,7 +1148,7 @@ impl ShowDetail {
                     self.router.push(Route::ShowDetail(
                         props.show_id,
                         ShowDetailQuery {
-                            season: props.season,
+                            season: Some(self.season(props)),
                             episode: None,
                             orphaned: false,
                         },
@@ -1644,7 +1652,7 @@ impl ShowDetail {
                     self.router.push(Route::ShowDetail(
                         id,
                         ShowDetailQuery {
-                            season,
+                            season: Some(season),
                             episode: None,
                             orphaned: false,
                         },
@@ -1779,7 +1787,7 @@ impl ShowDetail {
                 self.router.push(Route::ShowDetail(
                     props.show_id,
                     ShowDetailQuery {
-                        season: props.season,
+                        season: Some(self.season(props)),
                         episode: None,
                         orphaned: !props.orphaned,
                     },
@@ -1792,6 +1800,42 @@ impl ShowDetail {
 
     fn selected(&self) -> Option<&api::Season> {
         self.selected.and_then(|i| self.seasons.get(i))
+    }
+
+    /// The season on display: the selected one, else the one in the URL.
+    fn season(&self, props: &Props) -> api::SeasonNumber {
+        self.selected()
+            .map(|s| s.season)
+            .or(props.season)
+            .unwrap_or_default()
+    }
+
+    fn first_numbered_season(&self) -> Option<usize> {
+        self.seasons.iter().position(|s| !s.season.is_special())
+    }
+
+    /// The season to open when the URL names none, with the episode to scroll
+    /// to: the pending episode's season, else the first numbered season. A
+    /// URL fragment without a season predates seasons always being named and
+    /// means the first season, as it did then.
+    fn default_season(&self) -> (Option<usize>, Option<String>) {
+        if let Some(hash) = self.router.hash() {
+            let first = self
+                .seasons
+                .iter()
+                .position(|s| s.season == api::SeasonNumber::FIRST);
+            return (first.or_else(|| self.first_numbered_season()), Some(hash));
+        }
+
+        let pending = self.show_pending.and_then(|code| {
+            let i = self.seasons.iter().position(|s| s.season == code.season)?;
+            Some((i, code))
+        });
+
+        match pending {
+            Some((i, code)) => (Some(i), Some(code.to_string())),
+            None => (self.first_numbered_season(), None),
+        }
     }
 
     fn clear_picked(&mut self) {
@@ -1908,7 +1952,7 @@ impl ShowDetail {
         }
 
         let show_id = ctx.props().show_id;
-        let season = ctx.props().season;
+        let season = self.season(ctx.props());
 
         self._episodes_req = self
             .channel
@@ -2182,7 +2226,7 @@ impl ShowDetail {
                 let route = Route::ShowDetail(
                     ctx.props().show_id,
                     ShowDetailQuery {
-                        season: code.season,
+                        season: Some(code.season),
                         episode: Some(code),
                         orphaned: false,
                     },
