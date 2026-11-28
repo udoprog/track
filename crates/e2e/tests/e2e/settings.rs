@@ -158,7 +158,7 @@ pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track
 
     driver
         .wait_until("the checkbox to turn on", async || {
-            Ok(checked(driver, "Sign in through Access").await?)
+            checked(driver, "Sign in through Access").await
         })
         .await?;
 
@@ -226,10 +226,10 @@ pub async fn warns_about_trusting_only_the_email_header(
 /// The checkbox of the Cloudflare Access setting labelled `label`.
 async fn checkbox(driver: &TestDriver, label: &str) -> Result<TestElement> {
     for field in driver.find_all(By::Css(".auth-toggle label")).await? {
-        if field.text().await?.trim() == label {
-            if let Some(input) = field.find_all(By::Css("input")).await?.into_iter().next() {
-                return Ok(input);
-            }
+        if field.text().await?.trim() == label
+            && let Some(input) = field.find_all(By::Css("input")).await?.into_iter().next()
+        {
+            return Ok(input);
         }
     }
 
