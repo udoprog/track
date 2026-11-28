@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+    - '[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        default: "%date"
+        type: choice
+        options:
+        - "%date"
+
+env:
+  KICK_VERSION: "${{github.event.inputs.version}} || %{github.tag}"
+  RUST_LOG: kick=trace
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The server embeds dist/ through the `bundle` feature, so the frontend is
+  # built once here and handed to every platform build.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    - uses: Swatinem/rust-cache@v2
+    - uses: udoprog/actions@trug
+    - run: trug build --release
+    - uses: actions/upload-artifact@v7
+      with:
+        name: frontend
+        path: dist
+
+  build:
+    needs: frontend
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+        - {os: windows-latest, method: zip}
+        - {os: macos-latest, method: gzip}
+        - {os: ubuntu-latest, method: gzip}
+    steps:
+    - uses: udoprog/actions@kick
+    - uses: actions/checkout@v7
+    - uses: actions/download-artifact@v8
+      with: {name: frontend, path: dist}
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+    - run: cargo build --release -p track --no-default-features --features bundle
+    - run: kick ${{matrix.method}} --name "track-{release}-{arch}-{os}" --output release
+    - uses: actions/upload-artifact@v7
+      with:
+        name: release-${{matrix.os}}
+        path: release
+
+  publish:
+    permissions: write-all
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: udoprog/actions@kick
+    - uses: actions/download-artifact@v8
+      with: {name: release-windows-latest, path: release}
+    - uses: actions/download-artifact@v8
+      with: {name: release-macos-latest, path: release}
+    - uses: actions/download-artifact@v8
+      with: {name: release-ubuntu-latest, path: release}
+    - run: kick gh release --upload "release/*" --github-action
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

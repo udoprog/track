@@ -6,6 +6,9 @@ binary = "track"
 pre_build = ["trug build --release"]
 features = ["bundle"]
 
+[package]
+binaries = { exclude = ["api", "e2e", "frontend", "import", "tools"] }
+
 [deploy.systemd]
 description = "Track Service"
 user = "track"
