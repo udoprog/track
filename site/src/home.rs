@@ -10,7 +10,7 @@ const INSTALL: &str = "curl -fsSL https://udoprog.github.io/track/install.sh | s
 const FROM_SOURCE: &str = "git clone https://github.com/udoprog/track
 cd track
 trug build --release
-cargo install --locked --path crates/track";
+cargo install --path crates/track";
 
 /// The strengths, as the crate docs give them: one frame each.
 const STRENGTHS: &[(&str, &str)] = &[

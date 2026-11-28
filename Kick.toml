@@ -1,6 +1,13 @@
 lib_badges = ["-crates.io"]
 readme_badges = ["-crates.io"]
 
+[[badges]]
+id = "manual"
+alt = "manual"
+src = "https://img.shields.io/badge/manual-track-b7410e?style=for-the-badge&logo=mdbook&logoColor=white"
+href = "https://udoprog.github.io/track/#/manual/"
+height = "{{badge_height}}"
+
 [build]
 binary = "track"
 pre_build = ["trug build --release"]
