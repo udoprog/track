@@ -5,13 +5,15 @@ use super::Track;
 const ESCAPE: &str = "\u{E00C}";
 
 /// The sections the help lists, in order.
-const SECTIONS: [&str; 6] = [
+const SECTIONS: [&str; 8] = [
+    "Getting started",
     "Finding and adding shows and movies",
     "Marking things watched",
     "Remotes and syncing",
     "Other numberings and names",
     "Other names",
     "Settings",
+    "Users",
 ];
 
 async fn open_from_toolbar(driver: &TestDriver) -> Result<()> {
@@ -47,10 +49,20 @@ pub async fn opens_from_the_toolbar(driver: &mut TestDriver, _: &mut Track) -> R
         .await?;
     ensure!(ret.convert::<bool>()?, "the help search is not focused");
 
-    // Real track components illustrate the text.
+    // Real track components illustrate the text, and stored pictures show
+    // the app.
+    driver
+        .find_first("a.track-help-link[data-section=finding]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts("[data-test=help-title]", [SECTIONS[1]])
+        .await?;
     driver
         .find_first("[data-demo=media-kind] button.track-chip")
         .await?;
+    driver.find_first("img.track-help-picture").await?;
 
     driver
         .find_one_by("[data-test=help-search]")

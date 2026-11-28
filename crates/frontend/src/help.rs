@@ -8,12 +8,17 @@ use std::sync::OnceLock;
 /// Every section's source, in the order they are listed. A unit test checks
 /// that each `help/*.md` file is named here.
 const SOURCES: &[(&str, &str)] = &[
+    (
+        "05-getting-started.md",
+        include_str!("../help/05-getting-started.md"),
+    ),
     ("10-finding.md", include_str!("../help/10-finding.md")),
     ("20-watching.md", include_str!("../help/20-watching.md")),
     ("30-remotes.md", include_str!("../help/30-remotes.md")),
     ("35-numberings.md", include_str!("../help/35-numberings.md")),
     ("36-names.md", include_str!("../help/36-names.md")),
     ("40-settings.md", include_str!("../help/40-settings.md")),
+    ("45-users.md", include_str!("../help/45-users.md")),
 ];
 
 /// The section about finding and adding shows and movies.
@@ -135,7 +140,16 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), sections().len(), "two sections share an id");
 
-        for id in [FINDING, WATCHING, REMOTES, NUMBERINGS, NAMES, "settings"] {
+        for id in [
+            "getting-started",
+            FINDING,
+            WATCHING,
+            REMOTES,
+            NUMBERINGS,
+            NAMES,
+            "settings",
+            "users",
+        ] {
             assert!(section(id).is_some(), "no section {id}");
         }
     }

@@ -43,6 +43,9 @@ default** goes back to the order in Settings. ![Clear
 cache](icon:arrow-path) **Clear cache** forgets what was fetched and syncs it
 again.
 
+![The remotes of a show: TMDB, TheTVDB and IMDb, each with its switches and
+actions](images/remotes.webp)
+
 TMDB, TheTVDB, TVmaze and AniDB identifiers are numbers; IMDb identifiers
 look like `tt1234567`. An XEM identifier is where XEM was found and the id
 there, such as `tvdb/424536`; its slug is XEM's own show id, such as `6743`

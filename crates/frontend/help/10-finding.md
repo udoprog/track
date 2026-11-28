@@ -7,7 +7,7 @@ press Enter.
 
 Shows are searched on TMDB and TheTVDB, movies on TMDB. A source is only
 searched once its API key is set under **Settings > API keys** (see
-[Settings](settings)). Each result shows whether it is a
+[Getting started](getting-started)). Each result shows whether it is a
 ![Show](icon:tv) show or a ![Movie](icon:film) movie and which sources know
 it. Narrow the results with the Shows and Movies chips:
 
