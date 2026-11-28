@@ -178,39 +178,39 @@ impl Component for Search {
     }
 }
 
-/// Mark the show results with one of `show`'s remotes as tracked as it. With
-/// `known`, only when a result is already tracked as `show`.
-fn mark_show(results: &mut [api::SearchResult], show: &api::Show, known: bool) -> bool {
+/// Mark the show results with one of `show`'s remotes as tracked as it, if the
+/// viewer tracks it.
+fn mark_show(results: &mut [api::SearchResult], show: &api::Show) -> bool {
     let entries = results.iter_mut().filter_map(|r| match r {
         api::SearchResult::Show(s) => Some((&s.remote, &mut s.already_tracked)),
         api::SearchResult::Movie(_) => None,
     });
 
-    mark_tracked(entries.collect(), &show.remotes, show.id, known)
+    mark_tracked(entries.collect(), &show.remotes, show.id, show.tracked)
 }
 
 /// [`mark_show`] for movies.
-fn mark_movie(results: &mut [api::SearchResult], movie: &api::Movie, known: bool) -> bool {
+fn mark_movie(results: &mut [api::SearchResult], movie: &api::Movie) -> bool {
     let entries = results.iter_mut().filter_map(|r| match r {
         api::SearchResult::Movie(m) => Some((&m.remote, &mut m.already_tracked)),
         api::SearchResult::Show(_) => None,
     });
 
-    mark_tracked(entries.collect(), &movie.remotes, movie.id, known)
+    mark_tracked(entries.collect(), &movie.remotes, movie.id, movie.tracked)
 }
 
-/// Set each entry whose remote is one of `remotes` as tracked as `id`, and
-/// say whether any changed.
+/// Set each entry whose remote is one of `remotes` as tracked as `id` when the
+/// viewer tracks it, and say whether any changed.
 fn mark_tracked<I>(
     mut entries: Vec<(&api::Remote, &mut Option<I>)>,
     remotes: &[api::RemoteEntry],
     id: I,
-    known: bool,
+    tracked: bool,
 ) -> bool
 where
     I: Copy + PartialEq,
 {
-    if known && !entries.iter().any(|(_, t)| **t == Some(id)) {
+    if !tracked {
         return false;
     }
 
@@ -242,22 +242,22 @@ impl Search {
                 if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
-                // A created show is the viewer's own (or new); a changed one
-                // carries nobody's tracking, but its sync may have found more
-                // remotes (a TMDB show's TheTVDB id) of a show already Tracked.
-                let (show, known) = match event.kind {
-                    api::AppEventKind::ShowCreated { show } => (show, false),
-                    api::AppEventKind::ShowChanged { show } => (show, true),
-                    api::AppEventKind::MovieCreated { movie } => {
-                        return Ok(mark_movie(&mut self.results, &movie, false));
+                // The server sends each user their own view of a show, so its
+                // `tracked` is the viewer's: another user tracking a new show
+                // leaves it untracked here, while a sync that found more
+                // remotes (a TMDB show's TheTVDB id) of one the viewer tracks
+                // marks those results too.
+                match event.kind {
+                    api::AppEventKind::ShowCreated { show }
+                    | api::AppEventKind::ShowChanged { show } => {
+                        Ok(mark_show(&mut self.results, &show))
                     }
-                    api::AppEventKind::MovieChanged { movie } => {
-                        return Ok(mark_movie(&mut self.results, &movie, true));
+                    api::AppEventKind::MovieCreated { movie }
+                    | api::AppEventKind::MovieChanged { movie } => {
+                        Ok(mark_movie(&mut self.results, &movie))
                     }
-                    _ => return Ok(false),
-                };
-
-                Ok(mark_show(&mut self.results, &show, known))
+                    _ => Ok(false),
+                }
             }
             Msg::QueryInput(q) => {
                 self.query = q;
@@ -628,20 +628,34 @@ mod tests {
         assert_eq!(b, Some(show));
     }
 
-    /// A changed show nobody here has Tracked leaves its results alone, since
-    /// the event says nothing of the viewer's tracking.
+    /// Another user tracking a new show (or a sync of one the viewer doesn't
+    /// track) sends this viewer their own untracked view of it, which leaves
+    /// its results offering Track.
     #[test]
-    fn changed_show_leaves_untracked_results() {
+    fn show_created_by_another_user_leaves_results_untracked() {
         let show = api::ShowId::new(7);
         let tmdb = api::Remote::tmdb(1396);
-        let tvdb = api::Remote::tvdb(81189);
-        let remotes = [entry(tmdb.clone()), entry(tvdb.clone())];
+        let remotes = [entry(tmdb.clone())];
 
         let mut a = None;
-        let mut b = None;
-        let changed = mark_tracked(vec![(&tmdb, &mut a), (&tvdb, &mut b)], &remotes, show, true);
+        let changed = mark_tracked(vec![(&tmdb, &mut a)], &remotes, show, false);
 
         assert!(!changed);
-        assert_eq!((a, b), (None, None));
+        assert_eq!(a, None);
+    }
+
+    /// The viewer's own newly tracked show marks every result with one of its
+    /// remotes Tracked.
+    #[test]
+    fn show_tracked_by_the_viewer_marks_its_results() {
+        let show = api::ShowId::new(7);
+        let tmdb = api::Remote::tmdb(1396);
+        let remotes = [entry(tmdb.clone())];
+
+        let mut a = None;
+        let changed = mark_tracked(vec![(&tmdb, &mut a)], &remotes, show, true);
+
+        assert!(changed);
+        assert_eq!(a, Some(show));
     }
 }

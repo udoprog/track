@@ -466,6 +466,15 @@ async fn broadcasts_are_per_user() -> Result<()> {
     };
     assert!(show.tracked, "root does");
 
+    // Root tracking a new show tells everyone, but alice's search must still
+    // offer Track: her copy of the event is untracked.
+    let mut created = api::AppEventKind::ShowCreated { show: show.clone() };
+    assert!(crate::ws::personalize(db, alice, &mut created).await?);
+    let api::AppEventKind::ShowCreated { show: hers } = &created else {
+        panic!("expected a show creation");
+    };
+    assert!(!hers.tracked, "alice does not track the created show");
+
     // Each recipient sees the show in their own language.
     let swedish = api::Locale::from_iso("sv").unwrap();
     db.set_show_language(root, show.id, swedish).await?;
