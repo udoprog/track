@@ -1,7 +1,15 @@
 [package]
 name = "track"
+version = "0.0.0"
+authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2024"
-publish = false
+description = "Self-hosted tracker for the TV shows and movies you follow."
+documentation = "https://docs.rs/track"
+readme = "README.md"
+repository = "https://github.com/udoprog/track"
+license = "MIT OR Apache-2.0"
+keywords = ["movies", "self-hosted", "tracker", "tv", "watchlist"]
+categories = ["command-line-utilities", "web-programming::http-server"]
 
 default-run = "track"
 
