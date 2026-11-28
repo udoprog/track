@@ -72,6 +72,8 @@ pub(crate) struct ShowDetail {
     chips_scrolled: Option<usize>,
     episodes: Vec<api::Episode>,
     pending_episode: Option<(api::Code, api::EpisodeId)>,
+    /// The show's pending episode, in whichever season.
+    show_pending: Option<api::Code>,
     next_unwatched: Option<(api::Code, api::EpisodeId)>,
     confirm_remove: bool,
     remove_anchor: NodeRef,
@@ -382,6 +384,7 @@ impl Component for ShowDetail {
             chips_scrolled: None,
             episodes: Vec::new(),
             pending_episode: None,
+            show_pending: None,
             next_unwatched: None,
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
@@ -680,6 +683,7 @@ impl Component for ShowDetail {
             self.selected = None;
             self.episodes.clear();
             self.pending_episode = None;
+            self.show_pending = None;
             self.next_unwatched = None;
             self.confirm_remove = false;
             self.confirm_remove_watch = None;
@@ -708,6 +712,7 @@ impl Component for ShowDetail {
             self.pending_episode = None;
             self.next_unwatched = None;
             self.confirm_remove_watch = None;
+            self.scroll_target = self.router.hash();
             self.watched_by_episode.clear();
             self.clear_picked();
 
@@ -744,6 +749,7 @@ impl ShowDetail {
                     self.seasons.clear();
                     self.episodes.clear();
                     self.pending_episode = None;
+                    self.show_pending = None;
                     self.next_unwatched = None;
                     self.orphaned.clear();
                 }
@@ -994,6 +1000,7 @@ impl ShowDetail {
                 self.watched_by_episode.clear();
 
                 self.episodes = result.episodes;
+                self.show_pending = result.pending;
 
                 self.pending_episode = self
                     .episodes
@@ -2167,6 +2174,22 @@ impl ShowDetail {
             (label, callback)
         });
 
+        // The pending episode is in another season: link there instead.
+        let pending_elsewhere = self
+            .show_pending
+            .filter(|code| pending_episode.is_none() && code.season != season_number)
+            .map(|code| {
+                let route = Route::ShowDetail(
+                    ctx.props().show_id,
+                    ShowDetailQuery {
+                        season: code.season,
+                        episode: Some(code),
+                        orphaned: false,
+                    },
+                );
+                (code, route)
+            });
+
         let season_expanded = self.season_actions_expanded.contains(&season_number);
         let toggle_menu =
             link.callback(move |_: MouseEvent| UiMsg::ToggleSeasonActionsExpanded(season_number));
@@ -2208,6 +2231,8 @@ impl ShowDetail {
                             <div class={class::INPUT_GROUP}>
                                 if let Some((ref label, _)) = pending_episode {
                                     <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} href={format!("#{label}")} title="Jump to pending episode" />
+                                } else if let Some((label, ref route)) = pending_elsewhere {
+                                    <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} to={route.clone()} title={format!("Jump to pending episode {label}")} />
                                 }
 
                                 <Button icon={if season_expanded { class::ICON_ELLIPSIS_HORIZONTAL } else { class::ICON_BARS_2 }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| UiMsg::ToggleSeasonActionsExpanded(season_number))} />
@@ -2225,8 +2250,14 @@ impl ShowDetail {
                                 <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode" text={format!("Jump to next episode {label}")} />
 
                                 <Button icon={class::ICON_BOOKMARK} variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
-                            } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu trigger_icon={class::ICON_BOOKMARK_SLASH} text={label} title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))} />
+                            } else {
+                                if let Some((label, ref route)) = pending_elsewhere {
+                                    <Button icon={class::ICON_CHEVRON_DOWN} variant={Variant::Primary} to={route.clone()} title={format!("Jump to pending episode {label}")} text={format!("Jump to next episode {label}")} />
+                                }
+
+                                if let Some((label, episode_id)) = next_unwatched {
+                                    <MarkTimeMenu trigger_icon={class::ICON_BOOKMARK_SLASH} text={label} title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))} />
+                                }
                             }
 
                             if watched_count < total {

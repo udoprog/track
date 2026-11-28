@@ -1271,6 +1271,65 @@ pub async fn remaining_episodes_advance_pending(
     Ok(())
 }
 
+/// The pending episode can be jumped to from any season: the jump opens its
+/// season and scrolls it into view, as the in-season jump does.
+pub async fn pending_episode_is_jumped_to_from_any_season(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver.set_window_size(1200, 500).await?;
+    open_show(driver).await?;
+
+    driver
+        .find_one_by(".track-season-list [title='Show Season 2']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 2"],
+        )
+        .await?;
+
+    driver
+        .find_one_by(".track-toolbar-dropdown [title='Jump to pending episode S01E01']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(
+            "[data-testid='detail-content'] .track-toolbar h2",
+            ["Season 1"],
+        )
+        .await?;
+    driver
+        .wait_until("S01E01 to scroll into view", async || {
+            in_view(driver, "[id='S01E01']", None).await
+        })
+        .await?;
+
+    driver
+        .webdriver()
+        .execute("window.scrollTo(0, 0)", Vec::new())
+        .await?;
+    ensure!(
+        !in_view(driver, "[id='S01E01']", None).await?,
+        "S01E01 is in view without scrolling"
+    );
+
+    driver
+        .find_one_by(".track-toolbar-dropdown [title='Jump to pending episode']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_until("S01E01 to scroll into view in its season", async || {
+            in_view(driver, "[id='S01E01']", None).await
+        })
+        .await
+}
+
 /// Escape and switching seasons both clear the picked episodes.
 pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;

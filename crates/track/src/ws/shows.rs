@@ -191,7 +191,12 @@ impl WsHandler {
             .await?;
         self.add_numberings(req.show_id, &mut episodes).await?;
         let watched = self.db.episodes_watched(self.user.id, req.show_id).await?;
-        outgoing.write(api::ListEpisodesResponse { episodes, watched });
+        let pending = self.db.pending_code(self.user.id, req.show_id).await?;
+        outgoing.write(api::ListEpisodesResponse {
+            episodes,
+            watched,
+            pending,
+        });
         Ok(())
     }
 

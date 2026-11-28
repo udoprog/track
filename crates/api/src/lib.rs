@@ -2531,6 +2531,8 @@ pub struct ListEpisodesRequest {
 pub struct ListEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub watched: Vec<WatchedEpisode>,
+    /// The show's pending episode, whichever season it is in.
+    pub pending: Option<Code>,
 }
 
 #[derive(Debug, Encode, Decode)]

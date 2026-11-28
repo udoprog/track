@@ -1205,6 +1205,12 @@ pub(crate) struct InnerRead {
     pending_timestamp_for_movie: TypedStatement<(UserId, MovieId), (Timestamp,)>,
     #[sql = "SELECT episode_id, timestamp FROM pending WHERE user_id = ? AND show_id = ?"]
     pending_for_show: TypedStatement<(UserId, ShowId), (EpisodeId, Timestamp)>,
+    #[sql = "SELECT e.season, e.episode"]
+    #[sql = "FROM pending p"]
+    #[sql = "JOIN episodes e ON e.id = p.episode_id"]
+    #[sql = "WHERE p.user_id = ? AND p.show_id = ?"]
+    #[sql = "LIMIT 1"]
+    pending_code_for_show: TypedStatement<(UserId, ShowId), EpisodeMatchRow>,
     #[sql = "SELECT e.show_id, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = s.id AND c.key = 'language') AS language, s.default_language, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
@@ -3635,6 +3641,20 @@ impl Database {
             stmt.reset()?;
 
             Ok(out)
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn pending_code(
+        &self,
+        user: UserId,
+        show_id: ShowId,
+    ) -> Result<Option<api::Code>> {
+        let result = self.inner.read(move |s| {
+            let row = s.pending_code_for_show.bind((user, show_id))?.first()?;
+            Ok(row.map(|r| api::Code::new(r.season, r.episode)))
         });
 
         result.await?
