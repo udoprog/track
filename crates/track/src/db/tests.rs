@@ -2223,3 +2223,22 @@ async fn migrations_move_cloudflare_settings_onto_watchword() -> Result<()> {
     assert_eq!(auth.cloudflare().await?, None);
     Ok(())
 }
+
+/// A show tracked from TMDB whose sync found its TheTVDB id is found again
+/// by that TheTVDB id, as a TheTVDB search result carries it.
+#[tokio::test]
+async fn show_tracked_from_tmdb_is_found_by_its_tvdb_remote() -> Result<()> {
+    let db = Database::open_scratch()?;
+    let root = db.test_root().await?;
+    let show = api::ShowId::new(1);
+    db.create_show(show, "Breaking Bad", None, "").await?;
+    db.add_remote(show, None, &Remote::tmdb(1396)).await?;
+    db.set_show_tracked(root, show, true).await?;
+    db.add_remote(show, None, &Remote::tvdb(81189)).await?;
+
+    let remote = Remote::from(String::from("tvdb:81189"));
+    assert_eq!(db.show_id_by_remote(&remote).await?, Some(show));
+    let found = db.shows_by_remote_id(Some(root), &remote).await?;
+    assert_eq!(found.map(|s| (s.id, s.tracked)), Some((show, true)));
+    Ok(())
+}
