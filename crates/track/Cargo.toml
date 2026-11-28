@@ -1,6 +1,6 @@
 [package]
 name = "track"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2024"
 description = "Self-hosted tracker for the TV shows and movies you follow."
