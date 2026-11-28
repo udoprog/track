@@ -1,0 +1,46 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "crates/frontend/help/**", "crates/frontend/icons/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: site
+      - uses: udoprog/actions@trug
+      - run: cargo test --manifest-path site/Cargo.toml
+      - run: trug build -c site/Trug.toml --release --public-url /track/
+      - run: if [ -f site/install.sh ]; then cp site/install.sh site/dist/install.sh; fi
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

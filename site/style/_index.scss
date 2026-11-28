@@ -1,0 +1,712 @@
+// The site's own styles, after sockel's: the colours sockel reads (light and
+// dark), the page frame, the landing page's cinema pieces (marquee,
+// television, film strip, tickets, posters) and the manual. Every class
+// starts `site-`.
+
+@use "sockel" as p;
+
+@mixin light {
+    --bg: #fbf7f0;
+    --surface: #ffffff;
+    --text: #221a17;
+    --muted: #6b5f58;
+    --border: #e3d8ca;
+    --accent: #b3261e;
+    --on-accent: #ffffff;
+    --gold: #8a5d12;
+    --tv: #2b2420;
+    --velvet: #5c1418;
+    --screen: #14161c;
+    --screen-text: #f4efe6;
+    --screen-muted: #a9a39a;
+    --bulb: #ffd36b;
+    --terminal-bg: #1c1719;
+    --terminal-text: #f4efe6;
+    --shadow-1: 0 1px 2px rgb(40 20 10 / 0.08), 0 1px 3px rgb(40 20 10 / 0.06);
+    --shadow-2: 0 10px 30px rgb(40 20 10 / 0.18);
+    color-scheme: light;
+}
+
+@mixin dark {
+    --bg: #121014;
+    --surface: #1d1a1f;
+    --text: #f1ebe4;
+    --muted: #aaa09a;
+    --border: #36303a;
+    --accent: #ff6f61;
+    --on-accent: #121014;
+    --gold: #f2c14e;
+    --tv: #3b3540;
+    --velvet: #3a0d12;
+    --screen: #07080b;
+    --screen-text: #f4efe6;
+    --screen-muted: #a9a39a;
+    --bulb: #ffd36b;
+    --terminal-bg: #09080a;
+    --terminal-text: #f4efe6;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5);
+    --shadow-2: 0 10px 30px rgb(0 0 0 / 0.55);
+    color-scheme: dark;
+}
+
+:root {
+    @include light;
+    --site-width: 70rem;
+    // What an anchored heading keeps clear of the sticky bar.
+    --site-anchor-room: 4.5rem;
+    // The marquee's bulbs: their size and the distance between them.
+    --site-bulb: 0.5rem;
+    --site-bulb-step: 1.25rem;
+    // The film strip's sprocket holes.
+    --site-sprocket: 0.6rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        @include dark;
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: var(--text-base) / 1.6 system-ui, sans-serif;
+}
+
+a {
+    color: var(--accent);
+}
+
+// The bar across the top of every page.
+.site-bar {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-sticky);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.site-bar-inner {
+    max-width: var(--site-width);
+    margin: 0 auto;
+    padding: var(--space-3) var(--space-5);
+}
+
+.site-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+// A clapperboard: a striped arm over a dark slate.
+.site-brand-mark {
+    width: 1.4rem;
+    height: 1.1rem;
+    border-radius: var(--radius-xs);
+    background:
+        repeating-linear-gradient(-45deg, var(--text) 0 0.25rem, var(--bg) 0.25rem 0.5rem) top / 100% 35% no-repeat,
+        var(--accent);
+}
+
+.site-bar-link {
+    color: var(--muted);
+    text-decoration: none;
+
+    &:hover,
+    &[aria-current] {
+        color: var(--accent);
+    }
+}
+
+.site-footer {
+    margin-top: var(--space-9);
+    padding: var(--space-6) var(--space-5);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.site-muted {
+    margin: 0;
+    color: var(--muted);
+}
+
+.site-lead {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-lg);
+}
+
+// The landing page: the pitch, then sections of the same width.
+.site-home {
+    max-width: var(--site-width);
+    margin: 0 auto;
+    padding: 0 var(--space-5);
+}
+
+// The pitch beside the television, the television under it on a phone.
+.site-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-7);
+    padding: var(--space-8) 0 var(--space-6);
+
+    @include p.below("medium") {
+        grid-template-columns: minmax(0, 1fr);
+        padding-top: var(--space-6);
+    }
+}
+
+// A cinema marquee: a velvet board edged with chasing bulbs.
+.site-marquee {
+    position: relative;
+    padding: calc(var(--space-4) + var(--site-bulb-step)) calc(var(--space-4) + var(--site-bulb-step));
+    border-radius: var(--radius-lg);
+    background: var(--velvet);
+    color: var(--screen-text);
+    box-shadow: var(--shadow-2);
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: var(--space-1);
+        padding: var(--site-bulb-step);
+        border-radius: var(--radius-md);
+        // Spaced so that a bulb sits in each corner and the rows meet them.
+        background: radial-gradient(circle, var(--bulb) calc(var(--site-bulb) / 2), transparent calc(var(--site-bulb) / 2 + 1px))
+            0 0 / var(--site-bulb-step) var(--site-bulb-step) space;
+        // Only the edge of the board shows its bulbs.
+        mask:
+            linear-gradient(#000 0 0) content-box exclude,
+            linear-gradient(#000 0 0);
+        animation: site-twinkle 1.4s ease-in-out infinite alternate;
+        pointer-events: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        &::before {
+            animation: none;
+        }
+    }
+}
+
+@keyframes site-twinkle {
+    to {
+        opacity: 0.55;
+    }
+}
+
+.site-marquee-label {
+    color: var(--bulb);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.site-hero-title {
+    margin: var(--space-1) 0 0;
+    font-size: clamp(2rem, 5vw, 3.25rem);
+    line-height: 1.1;
+}
+
+// A television on its stand, the app's What's Next on its screen.
+.site-tv {
+    position: relative;
+    justify-self: center;
+    width: min(100%, 26rem);
+    padding-top: var(--space-6);
+
+    // The antennas.
+    &::before,
+    &::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 2px;
+        height: var(--space-7);
+        background: var(--muted);
+        transform-origin: bottom;
+    }
+
+    &::before {
+        transform: rotate(-30deg);
+    }
+
+    &::after {
+        transform: rotate(30deg);
+    }
+}
+
+.site-tv-screen {
+    position: relative;
+    z-index: 1;
+    padding: var(--space-5);
+    border: var(--space-3) solid var(--tv);
+    border-radius: var(--radius-lg);
+    background:
+        repeating-linear-gradient(transparent 0 2px, rgb(255 255 255 / 0.03) 2px 4px),
+        radial-gradient(circle at 30% 20%, #2a3140, var(--screen));
+    color: var(--screen-text);
+    box-shadow: var(--shadow-2);
+}
+
+.site-tv-stand {
+    width: 40%;
+    height: var(--space-3);
+    margin: 0 auto;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    background: var(--tv);
+}
+
+// What's Next as the app draws it: the poster beside the episode.
+.site-up-next {
+    display: grid;
+    grid-template-columns: 6rem minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: center;
+    // Its text is on the screen's dark ground.
+    --muted: var(--screen-muted);
+}
+
+// The live dot before a label.
+.site-on-air {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--bulb);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+
+    &::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: site-pulse 1.6s ease-in-out infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        &::before {
+            animation: none;
+        }
+    }
+}
+
+@keyframes site-pulse {
+    50% {
+        opacity: 0.3;
+    }
+}
+
+.site-up-next-button {
+    justify-self: start;
+    margin-top: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.site-section {
+    padding: var(--space-7) 0;
+    scroll-margin-top: var(--site-anchor-room);
+}
+
+// A strip of film, one frame per strength, between rows of sprocket holes;
+// the frames stack on a phone.
+.site-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-1);
+    margin: 0;
+    padding: calc(var(--site-sprocket) * 2.5) var(--space-2);
+    list-style: none;
+    border-radius: var(--radius-sm);
+    background:
+        radial-gradient(circle, var(--bg) 0 calc(var(--site-sprocket) / 2), transparent calc(var(--site-sprocket) / 2 + 0.5px))
+            0 calc(var(--site-sprocket) * 0.75) / calc(var(--site-sprocket) * 2) calc(var(--site-sprocket) * 1.5) repeat-x,
+        radial-gradient(circle, var(--bg) 0 calc(var(--site-sprocket) / 2), transparent calc(var(--site-sprocket) / 2 + 0.5px))
+            0 calc(100% - var(--site-sprocket) * 0.75) / calc(var(--site-sprocket) * 2) calc(var(--site-sprocket) * 1.5) repeat-x,
+        #1b1714;
+}
+
+.site-frame {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-5);
+    border-radius: var(--radius-xs);
+    background: linear-gradient(160deg, #3b2f27, #241d19);
+    color: var(--screen-text);
+    // Its text is on the film's dark ground.
+    --muted: var(--screen-muted);
+}
+
+.site-frame-title {
+    color: var(--bulb);
+    font-size: var(--text-lg);
+}
+
+// Cinema tickets, a body and a torn-off stub, notched where they meet.
+.site-tickets {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    @include p.below("small") {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.site-ticket {
+    --notch: 0.75rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+    transition: transform 0.2s ease;
+    mask:
+        radial-gradient(circle var(--notch) at calc(100% - 3rem) 0, transparent 98%, #000) top / 100% 51% no-repeat,
+        radial-gradient(circle var(--notch) at calc(100% - 3rem) 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+
+    &:hover {
+        transform: rotate(-1deg) translateY(-2px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+
+        &:hover {
+            transform: none;
+        }
+    }
+}
+
+.site-ticket-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-5);
+}
+
+.site-ticket-title {
+    font-size: var(--text-lg);
+}
+
+.site-ticket-stub {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 6rem;
+    padding: var(--space-4) 0;
+    border-left: 2px dashed var(--border);
+    color: var(--gold);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+}
+
+.site-ticket-number {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+// Text beside the poster wall, the wall under it on a phone.
+.site-shelf {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: var(--space-7);
+    align-items: center;
+
+    @include p.below("medium") {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.site-poster-wall {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+    perspective: 60rem;
+}
+
+// A made-up poster in the hue `--poster-hue`: a sun over hills, the title at
+// its foot.
+.site-poster {
+    --poster-hue: 210;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    aspect-ratio: 2 / 3;
+    padding: var(--space-2);
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(170deg, hsl(var(--poster-hue) 55% 45%), hsl(var(--poster-hue) 60% 14%));
+    color: #fff;
+    box-shadow: var(--shadow-2);
+    transition: transform 0.25s ease;
+
+    &:hover {
+        transform: rotateY(-8deg) translateY(-4px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+
+        &:hover {
+            transform: none;
+        }
+    }
+}
+
+.site-poster-small {
+    padding: var(--space-1);
+    box-shadow: none;
+}
+
+.site-poster-art {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 70% 30%, hsl(calc(var(--poster-hue) + 40) 90% 70%) 0 12%, transparent 13%),
+        radial-gradient(ellipse 80% 40% at 20% 85%, hsl(var(--poster-hue) 50% 10% / 0.9) 0 60%, transparent 61%),
+        radial-gradient(ellipse 90% 35% at 90% 95%, hsl(var(--poster-hue) 45% 6%) 0 60%, transparent 61%);
+}
+
+.site-poster-title {
+    position: relative;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    line-height: 1.15;
+    text-transform: uppercase;
+}
+
+.site-poster-detail {
+    position: relative;
+    color: rgb(255 255 255 / 0.75);
+    font-size: var(--text-xs);
+}
+
+// A shell session or command: light text on a dark ground in either theme.
+.site-terminal {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--terminal-bg);
+    color: var(--terminal-text);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+}
+
+// A command beside the button that copies it.
+.site-command {
+    max-width: 48rem;
+}
+
+// The manual: its contents beside the page, above it on a phone.
+.site-manual {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    gap: var(--space-7);
+    max-width: var(--site-width);
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-5);
+
+    @include p.below("medium") {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.site-manual-nav {
+    position: sticky;
+    top: var(--site-anchor-room);
+    align-self: start;
+    max-height: calc(100vh - var(--site-anchor-room));
+    overflow-y: auto;
+
+    @include p.below("medium") {
+        position: static;
+        max-height: none;
+    }
+}
+
+// The headings of the current page, indented below the pages.
+.site-nav-branch {
+    margin-inline-start: var(--space-3);
+    padding-inline-start: var(--space-2);
+    border-inline-start: 1px solid var(--border);
+}
+
+.site-manual-page {
+    min-width: 0;
+    max-width: 48rem;
+}
+
+// A card's title linking to what the card is about.
+.site-card-title {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+// One of the app's icons inline in the text.
+.site-glyph {
+    display: inline-block;
+    width: 1.1em;
+    height: 1.1em;
+    vertical-align: -0.2em;
+
+    svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// One of the app's buttons as it looks there: its icon, then its label.
+.site-key {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.05em var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-size: 0.9em;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: 0.05em;
+
+    svg {
+        width: 1.1em;
+        height: 1.1em;
+    }
+}
+
+.site-key-on {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.site-key-primary {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+// Keys drawn as one button with a menu arrow.
+.site-split {
+    display: inline-flex;
+    gap: 1px;
+}
+
+// One of the app's illustrations: keys on a quiet ground.
+.site-demo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+}
+
+// A manual page rendered from markdown, whose elements carry no classes: its
+// own parts are styled by element.
+.site-markdown {
+    h1,
+    h2,
+    h3,
+    h4 {
+        line-height: 1.25;
+        margin: var(--space-7) 0 var(--space-3);
+        scroll-margin-top: var(--site-anchor-room);
+    }
+
+    h2 {
+        font-size: var(--text-xl);
+        padding-bottom: var(--space-1);
+        border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+        font-size: var(--text-lg);
+    }
+
+    code {
+        padding: 0.1em 0.3em;
+        border-radius: var(--radius-xs);
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        font-size: 0.9em;
+    }
+
+    pre {
+        padding: var(--space-3) var(--space-4);
+        overflow-x: auto;
+        background: var(--terminal-bg);
+        color: var(--terminal-text);
+        border-radius: var(--radius-sm);
+        font-size: var(--text-sm);
+        line-height: 1.5;
+    }
+
+    pre code {
+        padding: 0;
+        background: none;
+        font-size: inherit;
+    }
+
+    img {
+        max-width: 100%;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+    }
+
+    table {
+        border-collapse: collapse;
+        display: block;
+        overflow-x: auto;
+    }
+
+    th,
+    td {
+        padding: var(--space-1) var(--space-3);
+        border: 1px solid var(--border);
+        text-align: left;
+    }
+
+    blockquote {
+        margin: 0;
+        padding-left: var(--space-4);
+        border-left: 3px solid var(--border);
+        color: var(--muted);
+    }
+}

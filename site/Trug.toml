@@ -1,0 +1,7 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[watch]
+watch = [".", "../crates/frontend/help"]
+ignore = ["target", "dist"]
