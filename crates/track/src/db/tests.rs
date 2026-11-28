@@ -2257,17 +2257,3 @@ async fn show_tracked_from_tmdb_is_found_by_its_tvdb_remote() -> Result<()> {
     assert_eq!(found.map(|s| (s.id, s.tracked)), Some((show, true)));
     Ok(())
 }
-
-/// A remote left behind by a deleted show leads nowhere, so tracking its
-/// search result again creates a new show instead of reusing the gone one.
-#[tokio::test]
-async fn deleted_show_is_not_found_by_its_remote() -> Result<()> {
-    let db = Database::open_scratch()?;
-    let show = api::ShowId::new(1);
-    db.create_show(show, "Breaking Bad", None, "").await?;
-    db.add_remote(show, None, &Remote::tvdb(81189)).await?;
-    db.delete_show(show).await?;
-
-    assert_eq!(db.show_id_by_remote(&Remote::tvdb(81189)).await?, None);
-    Ok(())
-}

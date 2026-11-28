@@ -816,7 +816,7 @@ pub(crate) struct InnerRead {
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
     #[sql = "SELECT show_id, language, kind, text FROM show_strings ORDER BY show_id"]
     list_all_show_strings: TypedStatement<(), AllShowStringRow>,
-    #[sql = "SELECT r.show_id FROM show_remotes r JOIN shows s ON s.id = r.show_id WHERE r.source = ? AND r.value = ? LIMIT 1"]
+    #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
     // images (shows and movies share one table)

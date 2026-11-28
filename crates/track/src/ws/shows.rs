@@ -9,12 +9,20 @@ use crate::xem;
 
 /// The show `remote` belongs to, also found by its counterpart on TMDB or
 /// TheTVDB: a show tracked from one only gets the other's id once it syncs.
+///
+/// Remotes outlive a deleted show, so the id found may be one whose show is
+/// gone. A show that still exists wins over one that doesn't; else the gone
+/// show's id is returned so that tracking it again brings back its history.
 pub(crate) async fn existing_show(
     db: &Database,
     remotes: &RemoteClients,
     remote: &api::Remote,
 ) -> Result<Option<ShowId>> {
-    if let Some(id) = db.show_id_by_remote(remote).await? {
+    let direct = db.show_id_by_remote(remote).await?;
+
+    if let Some(id) = direct
+        && show_exists(db, id).await?
+    {
         return Ok(Some(id));
     }
 
@@ -26,10 +34,64 @@ pub(crate) async fn existing_show(
         }
     };
 
-    match other {
-        Some(other) => db.show_id_by_remote(&other).await,
-        None => Ok(None),
+    let other = match other {
+        Some(other) => db.show_id_by_remote(&other).await?,
+        None => None,
+    };
+
+    if let Some(id) = other
+        && show_exists(db, id).await?
+    {
+        return Ok(Some(id));
     }
+
+    Ok(direct.or(other))
+}
+
+async fn show_exists(db: &Database, id: ShowId) -> Result<bool> {
+    Ok(db.show_by_id(None, id).await?.is_some())
+}
+
+/// Tracks the show of `req` for `user`: the existing one if any (see
+/// [`existing_show`]), created when its row doesn't exist. Returns the show
+/// and whether it was created.
+pub(crate) async fn track_show_for(
+    db: &Database,
+    remotes: &RemoteClients,
+    user: api::UserId,
+    req: &api::TrackShowRequest,
+) -> Result<(api::Show, bool)> {
+    let existing = existing_show(db, remotes, &req.remote).await?;
+
+    let (show_id, created) = match existing {
+        Some(id) if show_exists(db, id).await? => (id, false),
+        Some(id) => (id, true),
+        None => (ShowId::random(), true),
+    };
+
+    if created {
+        db.create_show(
+            show_id,
+            &req.title
+                .clone()
+                .unwrap_or_else(|| req.remote.value().to_string()),
+            None,
+            req.overview.as_deref().unwrap_or_default(),
+        )
+        .await?;
+    }
+
+    db.add_remote(show_id, req.slug.as_deref(), &req.remote)
+        .await?;
+
+    db.set_show_tracked(user, show_id, true).await?;
+
+    let show = db
+        .show_by_id(Some(user), show_id)
+        .await?
+        .context("Expected show to exist")?;
+
+    Ok((show, created))
 }
 
 impl WsHandler {
@@ -85,37 +147,9 @@ impl WsHandler {
             .read::<api::TrackShowRequest>()
             .context("Expected a request payload")?;
 
-        let existing = existing_show(&self.db, &self.remote, &req.remote).await?;
-        let show_id = existing.unwrap_or_else(ShowId::random);
+        let (show, created) = track_show_for(&self.db, &self.remote, self.user.id, &req).await?;
 
-        if existing.is_none() {
-            self.db
-                .create_show(
-                    show_id,
-                    &req.title
-                        .clone()
-                        .unwrap_or_else(|| req.remote.value().to_string()),
-                    None,
-                    req.overview.as_deref().unwrap_or_default(),
-                )
-                .await?;
-        }
-
-        self.db
-            .add_remote(show_id, req.slug.as_deref(), &req.remote)
-            .await?;
-
-        self.db
-            .set_show_tracked(self.user.id, show_id, true)
-            .await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), show_id)
-            .await?
-            .context("Expected show to exist")?;
-
-        if existing.is_some() {
+        if !created {
             self.fill_my_pending(&show).await?;
 
             self.broadcast.emit_to(
@@ -661,7 +695,7 @@ mod tests {
     use api::{Remote, ShowId};
     use axum::routing::get;
 
-    use super::existing_show;
+    use super::{existing_show, track_show_for};
     use crate::db::Database;
     use crate::remote::RemoteClients;
 
@@ -733,6 +767,92 @@ mod tests {
 
         assert_eq!(existing_show(&db, &remotes, &Remote::tvdb(1)).await?, None);
         assert_eq!(existing_show(&db, &remotes, &Remote::tmdb(2)).await?, None);
+        Ok(())
+    }
+
+    fn track(remote: Remote) -> api::TrackShowRequest {
+        api::TrackShowRequest {
+            slug: None,
+            remote,
+            title: Some("Breaking Bad".to_owned()),
+            overview: None,
+        }
+    }
+
+    /// Tracks a show from `tracked_from`, watches its first episode, deletes
+    /// the show and tracks it again from `retracked_from`. The show comes back
+    /// under its old id with its watch history once its episodes return.
+    async fn retrack_deleted(tracked_from: Remote, retracked_from: Remote) -> Result<()> {
+        let db = Database::open_scratch()?;
+        let user = db.test_root().await?;
+        let remotes = remotes().await?;
+
+        let (show, created) = track_show_for(&db, &remotes, user, &track(tracked_from)).await?;
+        assert!(created);
+
+        let season = api::SeasonNumber::from_ordinal(1);
+        let episode = api::EpisodeId::new(11);
+        let aired = api::Timestamp::from_jiff(jiff::Timestamp::from_second(1_600_000_000)?);
+        let now = api::Timestamp::from_jiff(jiff::Timestamp::from_second(1_700_000_000)?);
+        db.upsert_episode(episode, show.id, season, 1, None, Some(aired))
+            .await?;
+        db.mark_watched(
+            user,
+            api::WatchedId::random(),
+            api::WatchedKind::Episode {
+                show: show.id,
+                episode,
+            },
+            api::MarkTime::Now,
+            now,
+        )
+        .await?;
+
+        db.delete_show(show.id).await?;
+        assert!(db.show_by_id(None, show.id).await?.is_none());
+
+        let (again, created) = track_show_for(&db, &remotes, user, &track(retracked_from)).await?;
+        assert!(created);
+        assert_eq!(again.id, show.id);
+        assert!(again.tracked);
+
+        // Its sync brings the episodes back, and the watch is still there.
+        db.upsert_episode(episode, show.id, season, 1, None, Some(aired))
+            .await?;
+        assert_eq!(db.episodes_watched(user, show.id).await?.len(), 1);
+        Ok(())
+    }
+
+    /// A deleted show tracked again from the same remote keeps its id.
+    #[tokio::test]
+    async fn deleted_show_tracked_again_keeps_its_id() -> Result<()> {
+        retrack_deleted(Remote::tmdb(1396), Remote::tmdb(1396)).await
+    }
+
+    /// Also when tracked again from its counterpart's search result.
+    #[tokio::test]
+    async fn deleted_show_tracked_again_from_its_counterpart_keeps_its_id() -> Result<()> {
+        retrack_deleted(Remote::tmdb(1396), Remote::tvdb(81189)).await
+    }
+
+    /// A show that still exists wins over a deleted one that shares the
+    /// show's other remote.
+    #[tokio::test]
+    async fn live_show_wins_over_a_deleted_one() -> Result<()> {
+        let db = Database::open_scratch()?;
+        let remotes = remotes().await?;
+
+        let gone = ShowId::new(1);
+        db.create_show(gone, "Breaking Bad", None, "").await?;
+        db.add_remote(gone, None, &Remote::tvdb(81189)).await?;
+        db.delete_show(gone).await?;
+
+        let live = ShowId::new(2);
+        db.create_show(live, "Breaking Bad", None, "").await?;
+        db.add_remote(live, None, &Remote::tmdb(1396)).await?;
+
+        let found = existing_show(&db, &remotes, &Remote::tvdb(81189)).await?;
+        assert_eq!(found, Some(live));
         Ok(())
     }
 }
