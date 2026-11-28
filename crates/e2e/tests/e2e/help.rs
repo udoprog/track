@@ -64,6 +64,22 @@ pub async fn opens_from_the_toolbar(driver: &mut TestDriver, _: &mut Track) -> R
         .await?;
     driver.find_first("img.track-help-picture").await?;
 
+    // A button sample draws its icon beside its label.
+    driver
+        .find_first(".track-help-sample .track-icon.track-icon-plus")
+        .await?;
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const r = document.querySelector('.track-help-sample .track-icon-plus').getBoundingClientRect(); return r.width > 0 && r.height > 0;",
+            Vec::new(),
+        )
+        .await?;
+    ensure!(
+        ret.convert::<bool>()?,
+        "the button sample's icon has no size"
+    );
+
     driver
         .find_one_by("[data-test=help-search]")
         .await?

@@ -459,18 +459,15 @@ a.track-search-title:hover {
     overflow: hidden;
 }
 
+// The logo takes its usual share of this height, its art inset on the plate.
 .track-search-source {
     display: inline-flex;
-    height: 18px;
+    align-items: center;
+    height: 22px;
     opacity: 0.75;
 
     &:hover {
         opacity: 1;
-    }
-
-    >.track-logo {
-        height: 100%;
-        padding: 0;
     }
 }
 

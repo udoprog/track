@@ -176,7 +176,7 @@ impl Builder<'_> {
 
                     let alt = AttrValue::from(alt);
                     let button = html! {
-                        <Button icon={AttrValue::from(name.to_owned())} title={alt.clone()} label={alt} />
+                        <Button icon={AttrValue::from(format!("track-icon-{name}"))} title={alt.clone()} label={alt} />
                     };
 
                     let mut node = sample("span", button);
