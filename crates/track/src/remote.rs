@@ -259,6 +259,31 @@ impl RemoteClients {
         Ok((out, total))
     }
 
+    /// The same show's remote on the other of TMDB and TheTVDB, looked up on
+    /// TMDB. `None` when TMDB isn't configured or doesn't know the show.
+    pub(crate) async fn cross_reference_show(
+        &self,
+        remote: &api::Remote,
+    ) -> Result<Option<api::Remote>> {
+        let Some(id) = remote.value().as_u32() else {
+            return Ok(None);
+        };
+
+        let found = match remote.source() {
+            api::RemoteSource::Tvdb => match self.tmdb().await {
+                Some(client) => client.find_show_by_tvdb(id).await?.map(api::Remote::tmdb),
+                None => None,
+            },
+            api::RemoteSource::Tmdb => match self.tmdb().await {
+                Some(client) => client.fetch_show_tvdb_id(id).await?.map(api::Remote::tvdb),
+                None => None,
+            },
+            _ => None,
+        };
+
+        Ok(found)
+    }
+
     /// Search movies (tmdb only). `already_tracked` is left as `None`. Returns
     /// the results and the total number of results.
     pub(crate) async fn search_movies(

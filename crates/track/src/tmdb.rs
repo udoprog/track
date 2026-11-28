@@ -209,6 +209,38 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
+    /// The TMDB id of the show with TheTVDB id `tvdb_id`.
+    pub(crate) async fn find_show_by_tvdb(&self, tvdb_id: u32) -> Result<Option<u32>> {
+        #[derive(Deserialize)]
+        struct Row {
+            id: u32,
+        }
+
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            tv_results: Vec<Row>,
+        }
+
+        let resp: Option<Resp> = self
+            .try_get_json(format!("find/{tvdb_id}?external_source=tvdb_id"))
+            .await?;
+
+        Ok(resp.and_then(|r| r.tv_results.first().map(|row| row.id)))
+    }
+
+    /// TheTVDB id of the TMDB show `id`.
+    pub(crate) async fn fetch_show_tvdb_id(&self, id: u32) -> Result<Option<u32>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            tvdb_id: Option<u32>,
+        }
+
+        let resp: Option<Resp> = self.try_get_json(format!("tv/{id}/external_ids")).await?;
+        Ok(resp.and_then(|r| r.tvdb_id))
+    }
+
     /// Search movies, returning the results for `page` and the total number of
     /// results across all pages.
     pub(crate) async fn search_movies(

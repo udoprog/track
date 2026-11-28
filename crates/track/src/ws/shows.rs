@@ -3,7 +3,34 @@ use api::ShowId;
 use musli_web::ws;
 
 use super::WsHandler;
+use crate::db::Database;
+use crate::remote::RemoteClients;
 use crate::xem;
+
+/// The show `remote` belongs to, also found by its counterpart on TMDB or
+/// TheTVDB: a show tracked from one only gets the other's id once it syncs.
+pub(crate) async fn existing_show(
+    db: &Database,
+    remotes: &RemoteClients,
+    remote: &api::Remote,
+) -> Result<Option<ShowId>> {
+    if let Some(id) = db.show_id_by_remote(remote).await? {
+        return Ok(Some(id));
+    }
+
+    let other = match remotes.cross_reference_show(remote).await {
+        Ok(other) => other,
+        Err(error) => {
+            tracing::warn!(?remote, ?error, "Looking up the show's other remote");
+            None
+        }
+    };
+
+    match other {
+        Some(other) => db.show_id_by_remote(&other).await,
+        None => Ok(None),
+    }
+}
 
 impl WsHandler {
     pub(super) async fn get_show(
@@ -58,7 +85,7 @@ impl WsHandler {
             .read::<api::TrackShowRequest>()
             .context("Expected a request payload")?;
 
-        let existing = self.db.show_id_by_remote(&req.remote).await?;
+        let existing = existing_show(&self.db, &self.remote, &req.remote).await?;
         let show_id = existing.unwrap_or_else(ShowId::random);
 
         if existing.is_none() {
@@ -622,6 +649,90 @@ impl WsHandler {
         }
 
         outgoing.write(api::Empty);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use anyhow::Result;
+    use api::{Remote, ShowId};
+    use axum::routing::get;
+
+    use super::existing_show;
+    use crate::db::Database;
+    use crate::remote::RemoteClients;
+
+    /// Remote clients whose TMDB is a stand-in that knows Breaking Bad as
+    /// TMDB 1396 and TheTVDB 81189.
+    async fn remotes() -> Result<RemoteClients> {
+        let app = axum::Router::new()
+            .route(
+                "/find/81189",
+                get(|| async { axum::Json(serde_json::json!({ "tv_results": [{ "id": 1396 }] })) }),
+            )
+            .route(
+                "/tv/1396/external_ids",
+                get(|| async { axum::Json(serde_json::json!({ "id": 1396, "tvdb_id": 81189 })) }),
+            );
+
+        let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
+        let addr = listener.local_addr()?;
+        tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let http = reqwest::Client::new();
+        let remotes = RemoteClients::new(http.clone(), http)
+            .with_tmdb_base(reqwest::Url::parse(&format!("http://{addr}/"))?);
+        remotes.configure(&api::Config {
+            tmdb_api_key: "key".to_owned(),
+            ..api::Config::default()
+        })?;
+        Ok(remotes)
+    }
+
+    async fn show_with(db: &Database, remote: Remote) -> Result<ShowId> {
+        let show = ShowId::new(1);
+        db.create_show(show, "Breaking Bad", None, "").await?;
+        db.add_remote(show, None, &remote).await?;
+        Ok(show)
+    }
+
+    /// A show tracked from TMDB whose sync hasn't found its TheTVDB id yet is
+    /// still the show of its TheTVDB search result.
+    #[tokio::test]
+    async fn tvdb_result_finds_show_tracked_from_tmdb() -> Result<()> {
+        let db = Database::open_scratch()?;
+        let show = show_with(&db, Remote::tmdb(1396)).await?;
+        let remotes = remotes().await?;
+
+        let found = existing_show(&db, &remotes, &Remote::tvdb(81189)).await?;
+        assert_eq!(found, Some(show));
+        Ok(())
+    }
+
+    /// And the other way around.
+    #[tokio::test]
+    async fn tmdb_result_finds_show_tracked_from_tvdb() -> Result<()> {
+        let db = Database::open_scratch()?;
+        let show = show_with(&db, Remote::tvdb(81189)).await?;
+        let remotes = remotes().await?;
+
+        let found = existing_show(&db, &remotes, &Remote::tmdb(1396)).await?;
+        assert_eq!(found, Some(show));
+        Ok(())
+    }
+
+    /// A show TMDB doesn't know, or a failing lookup, is a new show.
+    #[tokio::test]
+    async fn unknown_show_is_new() -> Result<()> {
+        let db = Database::open_scratch()?;
+        show_with(&db, Remote::tmdb(1396)).await?;
+        let remotes = remotes().await?;
+
+        assert_eq!(existing_show(&db, &remotes, &Remote::tvdb(1)).await?, None);
+        assert_eq!(existing_show(&db, &remotes, &Remote::tmdb(2)).await?, None);
         Ok(())
     }
 }
