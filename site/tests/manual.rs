@@ -125,9 +125,11 @@ fn every_help_page_renders() {
 
     let listed = listing
         .lines()
-        .filter_map(|line| line.trim().strip_prefix("(\""))
+        .map(|line| line.trim())
+        .filter_map(|line| line.strip_prefix('(').unwrap_or(line).strip_prefix('"'))
         .filter_map(|line| line.split_once('"'))
         .map(|(name, _)| name.to_owned())
+        .filter(|name| name.ends_with(".md"))
         .collect::<Vec<_>>();
 
     assert_eq!(
